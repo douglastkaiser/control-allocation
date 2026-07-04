@@ -18,3 +18,9 @@ def latex_to_png(latex_str, file_path="output.png", dpi=300, fontsize=16):
     )
     plt.close(fig)
     
+def controllers(pitch_rate, pitch_rate_cmd, yaw_rate, yaw_rate_cmd, airspeed, airspeed_cmd):
+    kp = 1
+    torque_y_cmd = kp*(pitch_rate_cmd - pitch_rate)
+    torque_z_cmd = kp*(yaw_rate_cmd - yaw_rate)
+    thrust_cmd = kp*(airspeed_cmd - airspeed)
+    return torque_y_cmd, torque_z_cmd, thrust_cmd

@@ -33,7 +33,6 @@ display(Math(latex_str))
 
 
 
-
 def allocate(tau_y, tau_z, thrust):
   w0 = w1 = w2 = w3 = w4 = w5 = w6 = w7 = 0
   return w0, w1, w2, w3, w4, w5, w6, w7
