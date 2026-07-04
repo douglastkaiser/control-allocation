@@ -2,9 +2,9 @@ import sympy as sp
 import sympy.physics.mechanics as me
 from IPython.display import display, Math
 
-readme = "# Control Allocation First Approach\n\n"
+readme = "# Control Allocation First Approach\n"
 readme += """
-Linear split:
+Linear split:\n
 Pitch rate, yaw rate, airpseed commands come into three PIDs
 Torque z and y and thrust commands come out.
 These are then summed to create Motor spin speed commands
@@ -13,9 +13,6 @@ These are then summed to create Motor spin speed commands
 # To represent the cross product symbolically for display,
 # we use the ReferenceFrame approach seen earlier or the cross function.
 B = me.ReferenceFrame('B')
-F = me.Vector(0)
-r = me.Vector(0)
-t = me.Vector(0)
 
 # Alternatively, for just a LaTeX representation of the general formula:
 Fi = sp.Symbol('F_i')
