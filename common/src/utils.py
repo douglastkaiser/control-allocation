@@ -24,3 +24,7 @@ def controllers(pitch_rate, pitch_rate_cmd, yaw_rate, yaw_rate_cmd, airspeed, ai
     torque_z_cmd = kp*(yaw_rate_cmd - yaw_rate)
     thrust_cmd = kp*(airspeed_cmd - airspeed)
     return torque_y_cmd, torque_z_cmd, thrust_cmd
+
+def make_vector(frame, name):
+  rx, ry, rz = sp.symbols(f'{name}_x {name}_y {name}_z')
+  return rx * frame.x + ry * frame.y + rz * frame.z
