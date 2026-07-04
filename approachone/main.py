@@ -19,7 +19,7 @@ def allocate(tau_y, tau_z, thrust):
 
     # F = C*w^2
     C = 1
-    w0 = w1 = w2 = w3 = w4 = w5 = w6 = w7 = math.sqrt(thrust_per_motor/C)
+    w0 = w1 = w2 = w3 = w4 = w5 = w6 = w7 = math.sqrt(max(thrust_per_motor, 0)/C)
 
     tau_y_per_quadrant = tau_y/4
     thrust_quadrant_0 = tau_y_per_quadrant/quadrant_0_yz[0]
