@@ -1,5 +1,7 @@
 
-test_controllers():
+from common.utils import controllers
+
+def test_controllers():
     pitch_rate = 0
     pitch_rate_cmd = 0
     yaw_rate = 0

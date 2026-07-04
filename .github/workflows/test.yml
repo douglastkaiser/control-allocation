@@ -31,5 +31,4 @@ jobs:
           pip install -e ./common
 
       - name: Run tests with pytest
-        run: |
-          pytest
+        run: python -m pytest
