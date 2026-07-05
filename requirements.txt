@@ -10,16 +10,20 @@ beautifulsoup4==4.14.3
 bleach==6.3.0
 certifi==2026.2.25
 cffi==2.0.0
+cfgv==3.5.0
 charset-normalizer==3.4.5
 colorama==0.4.6
 comm==0.2.3
+-e git+https://github.com/douglastkaiser/control-allocation@0d505da48fdab19db0ef73a0970f1bae1a33be0f#egg=common&subdirectory=common
 contourpy==1.3.3
 cycler==0.12.1
 debugpy==1.8.20
 decorator==5.2.1
 defusedxml==0.7.1
+distlib==0.4.3
 executing==2.2.1
 fastjsonschema==2.21.2
+filelock==3.29.5
 fonttools==4.63.0
 fqdn==1.5.1
 gitdb==4.0.12
@@ -27,6 +31,7 @@ GitPython==3.1.46
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
+identify==2.6.19
 idna==3.11
 ipykernel==7.2.0
 ipython==9.11.0
@@ -60,6 +65,7 @@ nbconvert==7.17.0
 nbdime==4.0.4
 nbformat==5.10.4
 nest-asyncio==1.6.0
+nodeenv==1.10.0
 notebook_shim==0.2.4
 numpy==2.5.1
 packaging==26.0
@@ -68,6 +74,7 @@ parso==0.8.6
 pexpect==4.9.0
 pillow==12.3.0
 platformdirs==4.9.4
+pre_commit==4.6.0
 prometheus_client==0.24.1
 prompt_toolkit==3.0.52
 psutil==7.2.2
@@ -77,6 +84,7 @@ pycparser==3.0
 Pygments==2.19.2
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
+python-discovery==1.4.3
 python-json-logger==4.0.0
 PyYAML==6.0.3
 pyzmq==27.1.0
@@ -87,7 +95,7 @@ rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
 rpds-py==0.30.0
 Send2Trash==2.1.0
-setuptools==82.0.1
+setuptools==83.0.0
 six==1.17.0
 smmap==5.0.3
 soupsieve==2.8.3
@@ -101,7 +109,9 @@ typing_extensions==4.15.0
 tzdata==2025.3
 uri-template==1.3.0
 urllib3==2.6.3
+virtualenv==21.5.1
 wcwidth==0.6.0
 webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
+wheel==0.47.0

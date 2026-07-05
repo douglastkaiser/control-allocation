@@ -32,6 +32,7 @@ jobs:
 
       - name: Run tests with pytest
         run: python -m pytest
+
   readmes:
     runs-on: ubuntu-latest
     steps:
@@ -44,16 +45,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e ./common
-      - name: Regenerate READMEs
+      - name: Regenerate every README
         run: |
           set -euo pipefail
-          for d in approachone approachtwo approachthree; do
-            ( cd "$d" && python gen_readme.py )
-          done
+          while IFS= read -r -d '' script; do
+            dir="$(dirname "$script")"
+            echo "Regenerating in $dir"
+            ( cd "$dir" && python "$(basename "$script")" )
+          done < <(find . -path ./.git -prune -o -name gen_readme.py -print0)
       - name: Fail if generated files are out of date
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Generated files are out of date — run gen_readme.py in each approach dir and commit the result."
+            echo "::error::Generated files out of date — run each gen_readme.py in its own dir and commit."
             git status --porcelain
             git diff
             exit 1
