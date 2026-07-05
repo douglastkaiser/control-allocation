@@ -2,6 +2,8 @@ import control as ctrl
 import matplotlib.pyplot as plt
 import numpy as np
 
+#### EXAMPLE CODE ONLY
+
 # Define Plant Transfer Function: P(s) = 1 / (s^2 + 2s + 1)
 plant_num = [1]
 plant_den = [1, 2, 1]

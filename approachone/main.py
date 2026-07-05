@@ -2,9 +2,7 @@ import math
 
 
 def allocate(
-    tau_y,
-    tau_z,
-    thrust,
+    y,
     quadrant_0_yz=[1, -1],
     quadrant_1_yz=[-1, -1],
     quadrant_2_yz=[1, 1],
@@ -17,6 +15,8 @@ def allocate(
 
     Produce motor speed commands
     """
+
+    tau_y, tau_z, thrust = y
 
     thrust_per_motor = thrust / 8
 
@@ -97,7 +97,10 @@ def allocate(
     return w0, w1, w2, w3, w4, w5, w6, w7
 
 
-def sim(w0, w1, w2, w3, w4, w5, w6, w7, pitch_rate, yaw_rate):
+def sim(u, x):
+    w0, w1, w2, w3, w4, w5, w6, w7 = u
+    pitch_rate, yaw_rate, u_air = x
+
     dt = 0.01
 
     C = 1
@@ -152,9 +155,10 @@ def sim(w0, w1, w2, w3, w4, w5, w6, w7, pitch_rate, yaw_rate):
     return pitch_rate, yaw_rate, airspeed
 
 
-def controllers(
-    pitch_rate, pitch_rate_cmd, yaw_rate, yaw_rate_cmd, airspeed, airspeed_cmd
-):
+def controllers(x, x_cmd):
+    pitch_rate, yaw_rate, airspeed = x
+    pitch_rate_cmd, yaw_rate_cmd, airspeed_cmd = x_cmd
+
     kp = 1
     torque_y_cmd = kp * (pitch_rate_cmd - pitch_rate)
     torque_z_cmd = kp * (yaw_rate_cmd - yaw_rate)
