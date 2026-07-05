@@ -1,5 +1,5 @@
 from approachone.main import allocate
-# from common.utils import controllers
+
 
 def test_allocate():
     w0, w1, w2, w3, w4, w5, w6, w7 = allocate(0, 0, 0)
