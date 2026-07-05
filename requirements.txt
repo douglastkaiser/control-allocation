@@ -14,8 +14,9 @@ cfgv==3.5.0
 charset-normalizer==3.4.5
 colorama==0.4.6
 comm==0.2.3
--e git+https://github.com/douglastkaiser/control-allocation@0d505da48fdab19db0ef73a0970f1bae1a33be0f#egg=common&subdirectory=common
+-e git+https://github.com/douglastkaiser/control-allocation@5f3ff41dbcad431ab7bf258a97aa413ab5957483#egg=common&subdirectory=common
 contourpy==1.3.3
+control==0.10.2
 cycler==0.12.1
 debugpy==1.8.20
 decorator==5.2.1
@@ -94,6 +95,7 @@ rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
 rpds-py==0.30.0
+scipy==1.18.0
 Send2Trash==2.1.0
 setuptools==83.0.0
 six==1.17.0
