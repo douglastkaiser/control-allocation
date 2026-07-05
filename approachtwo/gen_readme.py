@@ -4,7 +4,7 @@ from IPython.display import display, Math
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from common.src import utils
+from common import utils
 
 readme = "# Control Allocation Second Approach\n"
 readme += """

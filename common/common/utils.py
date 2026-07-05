@@ -28,3 +28,10 @@ def controllers(pitch_rate, pitch_rate_cmd, yaw_rate, yaw_rate_cmd, airspeed, ai
 def make_vector(frame, name):
   rx, ry, rz = sp.symbols(f'{name}_x {name}_y {name}_z')
   return rx * frame.x + ry * frame.y + rz * frame.z
+
+def skew_matrix(v):
+    return sp.Matrix([
+        [    0, -v[2],  v[1]],
+        [ v[2],     0, -v[0]],
+        [-v[1],  v[0],     0]
+    ])
