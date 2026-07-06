@@ -29,7 +29,6 @@ def allocate(
     thrust_quadrant_1 = tau_y_per_quadrant / quadrant_1_yz[0]
     thrust_quadrant_2 = tau_y_per_quadrant / quadrant_2_yz[0]
     thrust_quadrant_3 = tau_y_per_quadrant / quadrant_3_yz[0]
-    # positive tau from back wing thrust
     w0 += math.sqrt(abs(thrust_quadrant_0) / 2 / C) * math.copysign(
         1, thrust_quadrant_0
     )
@@ -55,7 +54,7 @@ def allocate(
         1, thrust_quadrant_3
     )
 
-    tau_z_per_quadrant = tau_z / 2
+    tau_z_per_quadrant = tau_z / 4
     thrust_quadrant_0 = tau_z_per_quadrant / quadrant_0_yz[1]
     thrust_quadrant_1 = tau_z_per_quadrant / quadrant_1_yz[1]
     thrust_quadrant_2 = tau_z_per_quadrant / quadrant_2_yz[1]
@@ -153,14 +152,3 @@ def sim(u, x):
     yaw_rate = yaw_rate + yaw_accel * dt
 
     return pitch_rate, yaw_rate, airspeed
-
-
-def controllers(x, x_cmd):
-    pitch_rate, yaw_rate, airspeed = x
-    pitch_rate_cmd, yaw_rate_cmd, airspeed_cmd = x_cmd
-
-    kp = 1
-    torque_y_cmd = kp * (pitch_rate_cmd - pitch_rate)
-    torque_z_cmd = kp * (yaw_rate_cmd - yaw_rate)
-    thrust_cmd = kp * (airspeed_cmd - airspeed)
-    return torque_y_cmd, torque_z_cmd, thrust_cmd

@@ -1,3 +1,4 @@
+<!-- This file is auto-generated -->
 # Control Allocation First Approach
 
 Linear split:
