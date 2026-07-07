@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import sympy as sp
+from sympy.printing import pycode
 
 
 def sympy_to_png(sympy, file_path="output.png", dpi=300, fontsize=16):
@@ -37,3 +38,21 @@ def make_vector(frame, name):
 
 def skew_matrix(v):
     return sp.Matrix([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+
+
+def generate_python_function(func_name, args, exprs):
+    # 1. Run CSE
+    subs, simplified = sp.cse(exprs)
+
+    # 2. Build function signature
+    arg_str = ", ".join(pycode(a) for a in args)
+    lines = [f"def {func_name}({arg_str}):"]
+
+    # 3. Add optimized subexpressions
+    for var, expr in subs:
+        lines.append(f"    {pycode(var)} = {pycode(expr)}")
+
+    # 4. Add return statement
+    lines.append(f"    return {pycode(tuple(simplified))}")
+
+    return "\n".join(lines)

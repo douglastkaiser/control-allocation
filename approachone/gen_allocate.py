@@ -1,16 +1,5 @@
 import sympy as sp
-
-allocate_file = "# This file is auto-generated\n"
-
-allocate_file += "import math\n"
-allocate_file += "def allocate(tau_y, tau_z, thrust):\n"
-allocate_file += (
-    "    r_quadrant_0_y = r_quadrant_1_y = r_quadrant_2_y = r_quadrant_3_y = 1\n"
-)
-allocate_file += (
-    "    r_quadrant_0_z = r_quadrant_1_z = r_quadrant_2_z = r_quadrant_3_z = 1\n"
-)
-allocate_file += "    C = 1\n"
+from common import utils
 
 # tau_y, tau_z, thrust = y
 tau_y = sp.Symbol("tau_y")
@@ -68,7 +57,25 @@ w5 = sp.Max(w5, 0)
 w6 = sp.Max(w6, 0)
 w7 = sp.Max(w7, 0)
 
-allocate_file += "    return " + sp.pycode((w0, w1, w2, w3, w4, w5, w6, w7))
-
+allocate_file = "# This file is auto-generated\n"
+allocate_file += "import math\n"
+allocate_file += utils.generate_python_function(
+    "evaluate_vectors",
+    (
+        tau_y,
+        tau_z,
+        thrust,
+        C,
+        r_quadrant_0_y,
+        r_quadrant_1_y,
+        r_quadrant_2_y,
+        r_quadrant_3_y,
+        r_quadrant_0_z,
+        r_quadrant_1_z,
+        r_quadrant_2_z,
+        r_quadrant_3_z,
+    ),
+    [w0, w1, w2, w3, w4, w5, w6, w7],
+)
 with open("allocate.py", "w") as f:
     f.write(allocate_file)
