@@ -1,4 +1,4 @@
-from approachone.main import allocate
+from common.common.sim import allocate
 import numpy as np
 
 

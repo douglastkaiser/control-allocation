@@ -17,6 +17,7 @@ r_quadrant_0_z, r_quadrant_1_z, r_quadrant_2_z, r_quadrant_3_z = sp.symbols(
 thrust_per_motor = thrust / 8
 
 C = sp.Symbol("C", positive=True)
+# C = 1
 w0 = w1 = w2 = w3 = w4 = w5 = w6 = w7 = sp.sqrt(sp.Max(thrust_per_motor, 0) / C)
 
 tau_y_per_quadrant = tau_y / 4
@@ -60,7 +61,7 @@ w7 = sp.Max(w7, 0)
 allocate_file = "# This file is auto-generated\n"
 allocate_file += "import math\n"
 allocate_file += utils.generate_python_function(
-    "evaluate_vectors",
+    "allocate",
     (
         tau_y,
         tau_z,

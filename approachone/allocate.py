@@ -2,7 +2,7 @@
 import math
 
 
-def evaluate_vectors(
+def allocate(
     tau_y,
     tau_z,
     thrust,
