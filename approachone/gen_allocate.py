@@ -68,24 +68,7 @@ w5 = sp.Max(w5, 0)
 w6 = sp.Max(w6, 0)
 w7 = sp.Max(w7, 0)
 
-allocate_file += (
-    "    return "
-    + sp.pycode(w0)
-    + ", "
-    + sp.pycode(w1)
-    + ", "
-    + sp.pycode(w2)
-    + ", "
-    + sp.pycode(w3)
-    + ", "
-    + sp.pycode(w4)
-    + ", "
-    + sp.pycode(w5)
-    + ", "
-    + sp.pycode(w6)
-    + ", "
-    + sp.pycode(w7)
-)
+allocate_file += "    return " + sp.pycode((w0, w1, w2, w3, w4, w5, w6, w7))
 
 with open("allocate.py", "w") as f:
     f.write(allocate_file)
