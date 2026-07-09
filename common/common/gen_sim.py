@@ -1,5 +1,9 @@
 import sympy as sp
-from common import utils
+from common import utils, model
+
+
+tau_vec = model.rigid_body_motion()
+print(tau_vec)
 
 
 w0, w1, w2, w3, w4, w5, w6, w7 = sp.symbols("w0 w1 w2 w3 w4 w5 w6 w7")
