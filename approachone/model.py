@@ -4,8 +4,6 @@ n_motors = 8
 
 
 def rigid_body_motion():
-    # motor speeds
-    # w = sp.Matrix(sp.symbols("w0:%d" % n_motors))
     # motor positions
     r_x = sp.Matrix(sp.symbols("r_x:%d" % n_motors))
     r_y = sp.Matrix(sp.symbols("r_y:%d" % n_motors))
@@ -19,4 +17,8 @@ def rigid_body_motion():
     tau_vec = sum(
         (r_expr[i].cross(F[i] * xhat) for i in range(n_motors)), sp.zeros(3, 1)
     )
-    return tau_vec
+    tau_y = tau_vec[1]
+    tau_z = tau_vec[2]
+    thrust = sum(F[i] for i in range(n_motors))
+
+    return tau_y, tau_z, thrust

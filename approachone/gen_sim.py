@@ -1,9 +1,9 @@
 import sympy as sp
-from common import utils, model
+from common import utils
+from model import rigid_body_motion
 
 
-tau_vec = model.rigid_body_motion()
-print(tau_vec)
+tau_y, tau_z, thrust = rigid_body_motion()
 
 
 w0, w1, w2, w3, w4, w5, w6, w7 = sp.symbols("w0 w1 w2 w3 w4 w5 w6 w7")
@@ -28,18 +28,8 @@ u_air = sp.sqrt(T / C)
 
 r0_z = r1_z = r2_z = r3_z = -1
 r4_z = r5_z = r6_z = r7_z = 1
-torque_y = (
-    F0 * r0_z
-    + F1 * r1_z
-    + F2 * r2_z
-    + F3 * r3_z
-    + F4 * r4_z
-    + F5 * r5_z
-    + F6 * r6_z
-    + F7 * r7_z
-)
 I_y = 1
-pitch_accel = torque_y / I_y
+pitch_accel = tau_y / I_y
 pitch_rate = pitch_rate_in + pitch_accel * dt
 
 r0_y = r4_y = 1.5
