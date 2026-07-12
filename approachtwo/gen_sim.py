@@ -1,6 +1,7 @@
 import sympy as sp
+
 from common import utils
-from common.geometry import MOTOR_R_Y, MOTOR_R_Z
+from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
 from common.model import (
     angular_acceleration,
     default_inertia_substitutions,
@@ -11,12 +12,11 @@ from common.model import (
 tau_vec, thrust = rigid_body_torque()
 omega_dot = angular_acceleration(tau_vec)
 
-w0, w1, w2, w3, w4, w5, w6, w7 = sp.symbols("w0 w1 w2 w3 w4 w5 w6 w7")
+motor_speeds = sp.symbols(f"w0:{N_MOTORS}")
 pitch_rate_in, yaw_rate_in, u_air_in = sp.symbols("pitch_rate_in yaw_rate_in u_air_in")
 C = sp.Symbol("C", positive=True)
 dt = sp.Symbol("dt", positive=True)
 
-motor_speeds = (w0, w1, w2, w3, w4, w5, w6, w7)
 forces = [C * motor_speed**2 for motor_speed in motor_speeds]
 
 T = sum(forces)
@@ -48,7 +48,7 @@ sim_file = "# This file is auto-generated\n"
 sim_file += "import math\n"
 sim_file += utils.generate_python_function(
     "sim",
-    (w0, w1, w2, w3, w4, w5, w6, w7, pitch_rate_in, yaw_rate_in, u_air_in, C, dt),
+    (*motor_speeds, pitch_rate_in, yaw_rate_in, u_air_in, C, dt),
     [pitch_rate, yaw_rate, u_air],
 )
 with open("sim.py", "w") as f:
