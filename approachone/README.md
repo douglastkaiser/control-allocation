@@ -52,9 +52,10 @@ T = f_{0} + f_{1} + f_{2} + f_{3} + f_{4} + f_{5} + f_{6} + f_{7}
 ## Allocation flow
 
 The allocator starts with equal thrust per motor for the requested total thrust,
-then adds signed speed deltas for pitch and yaw torque by quadrant. Shared
-quadrant geometry constants are substituted during generation so runtime callers
-only pass the three commands and `C`.
+then adds signed speed deltas for pitch and yaw torque by quadrant. Each
+quadrant arm is the average position of its two motors. Shared quadrant geometry
+constants are substituted during generation so runtime callers only pass the
+three commands and `C`.
 ```python
 w = allocated_motor_speeds(tau_y, tau_z, thrust, C, r_quadrant_y, r_quadrant_z)
 # gen_allocate.py substitutes ALLOCATION_R_QUADRANT_Y/Z before writing allocate.py.
