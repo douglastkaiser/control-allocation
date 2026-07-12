@@ -3,6 +3,7 @@ import pytest
 
 from approachtwo.model import create_A, pseudoinverse
 from approachtwo.main import allocate
+from approachtwo.sim import sim
 
 
 def test_allocate_zero_control_produces_stopped_motors():
@@ -28,3 +29,11 @@ def test_manual_pseudoinverse_stays_finite_after_motor_loss():
     A_plus = pseudoinverse(A)
 
     assert np.isfinite(A_plus).all()
+
+
+def test_control_allocate_sim_round_trip_is_self_consistent():
+    motor_speeds = allocate((0, 0, 100))
+
+    x_next = sim(*motor_speeds, 0, 0, 0, 1, 0.01)
+
+    assert x_next == pytest.approx((0, 0, 10))
