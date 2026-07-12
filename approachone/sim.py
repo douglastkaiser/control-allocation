@@ -20,13 +20,13 @@ def sim(w0, w1, w2, w3, w4, w5, w6, w7, pitch_rate_in, yaw_rate_in, u_air_in, C,
         dt * (C * x0 + C * x1 + C * x2 + C * x3 - x8) + pitch_rate_in,
         dt
         * (
-            0.5 * x10
-            - 0.5 * x11
-            + 0.5 * x12
+            0.8 * x10
+            - 1.5 * x11
+            - 0.8 * x12
             + 1.5 * x4
-            + 0.5 * x5
-            - 0.5 * x6
-            + 0.5 * x7
+            + 0.8 * x5
+            - 1.5 * x6
+            - 0.8 * x7
             + 1.5 * x9
         )
         + yaw_rate_in,

@@ -2,8 +2,9 @@
 # then run and test it here in a python wrap.
 
 
-from common import sim, utils
+from common import utils
 from allocate import allocate
+from sim import sim
 
 dt = 0.01
 C = 1
@@ -47,6 +48,6 @@ w0, w1, w2, w3, w4, w5, w6, w7 = allocate(
     r_quadrant_3_z,
 )
 print(f" {w0=}, {w1=}, {w2=}, {w3=}, {w4=}, {w5=}, {w6=}, {w7=}")
-pitch_rate, yaw_rate, u_air = sim.sim(w0, w1, w2, w3, w4, w5, w6, w7, 0, 0, 0, C, dt)
+pitch_rate, yaw_rate, u_air = sim(w0, w1, w2, w3, w4, w5, w6, w7, 0, 0, 0, C, dt)
 print("t = 1")
 print(f" {pitch_rate=}, {yaw_rate=}, {u_air=}")
