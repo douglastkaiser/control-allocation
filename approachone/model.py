@@ -1,9 +1,11 @@
 import sympy as sp
+from common.geometry import N_MOTORS
 
-n_motors = 8
+n_motors = N_MOTORS
 
 
 def rigid_body_motion():
+    """Build symbolic thrust and torque equations for all motors."""
     # motor positions
     r_x = sp.Matrix(sp.symbols("r_x:%d" % n_motors))
     r_y = sp.Matrix(sp.symbols("r_y:%d" % n_motors))

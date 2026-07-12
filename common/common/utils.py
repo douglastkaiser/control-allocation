@@ -41,18 +41,15 @@ def skew_matrix(v):
 
 
 def generate_python_function(func_name, args, exprs):
-    # 1. Run CSE
+    """Generate a Python function from symbolic arguments and expressions."""
     subs, simplified = sp.cse(exprs)
 
-    # 2. Build function signature
     arg_str = ", ".join(pycode(a) for a in args)
-    lines = [f"def {func_name}({arg_str}):"]
+    lines = ["", "", f"def {func_name}({arg_str}):"]
 
-    # 3. Add optimized subexpressions
     for var, expr in subs:
         lines.append(f"    {pycode(var)} = {pycode(expr)}")
 
-    # 4. Add return statement
     lines.append(f"    return {pycode(tuple(simplified))}")
 
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"

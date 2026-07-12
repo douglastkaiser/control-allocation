@@ -9,15 +9,6 @@ from sim import sim
 dt = 0.01
 C = 1
 
-r_quadrant_0_y = 1
-r_quadrant_1_y = -1
-r_quadrant_2_y = 1
-r_quadrant_3_y = -1
-r_quadrant_0_z = -1
-r_quadrant_1_z = -1
-r_quadrant_2_z = 1
-r_quadrant_3_z = 1
-
 x_cmd = [0, 0, 10]
 integrals = [0, 0, 0]
 prev_deltas = [0, 0, 0]
@@ -38,14 +29,6 @@ w0, w1, w2, w3, w4, w5, w6, w7 = allocate(
     tau_z,
     thrust,
     C,
-    r_quadrant_0_y,
-    r_quadrant_1_y,
-    r_quadrant_2_y,
-    r_quadrant_3_y,
-    r_quadrant_0_z,
-    r_quadrant_1_z,
-    r_quadrant_2_z,
-    r_quadrant_3_z,
 )
 print(f" {w0=}, {w1=}, {w2=}, {w3=}, {w4=}, {w5=}, {w6=}, {w7=}")
 pitch_rate, yaw_rate, u_air = sim(w0, w1, w2, w3, w4, w5, w6, w7, 0, 0, 0, C, dt)
