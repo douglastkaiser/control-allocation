@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from common import utils
-from approachtwo.main import allocate
+from approachtwo.model import allocated_motor_speeds
 from approachtwo.sim import sim
 
 
@@ -32,7 +32,7 @@ u, integrals, prev_deltas = utils.controllers(
 tau_y, tau_z, thrust = u
 print(f" {tau_y=}, {tau_z=}, {thrust=}")
 
-motor_speeds = allocate(u, motors_active)
+motor_speeds = allocated_motor_speeds(u, motors_active)
 print(f" {motor_speeds=}")
 
 pitch_rate, yaw_rate, u_air = sim(*motor_speeds, 0, 0, 0, C, dt)

@@ -7,6 +7,7 @@ from approachtwo.model import (
     allocated_squared_speeds,
     create_A,
     pseudoinverse,
+    pseudoinverse_equations,
 )
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
 from common.model import rigid_body_motion, single_motor_torque
@@ -120,14 +121,8 @@ readme += """
 We intentionally do not call `np.linalg.pinv()`. The code computes the compact
 SVD and then assembles the pseudoinverse itself:
 """
-readme += r"""```math
-A = U \Sigma V^T
-```
-"""
-readme += r"""```math
-A^+ = V \Sigma_\lambda^+ U^T
-```
-"""
+for equation in pseudoinverse_equations(A):
+    readme += math_block(equation)
 readme += """
 The strict Moore-Penrose reciprocal is `1 / sigma`. This implementation uses a
 singularity-robust reciprocal instead:

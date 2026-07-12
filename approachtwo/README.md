@@ -41,10 +41,10 @@ A = \left[\begin{matrix}-1 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\1.5 & 0.8 & -1.5 & -0
 We intentionally do not call `np.linalg.pinv()`. The code computes the compact
 SVD and then assembles the pseudoinverse itself:
 ```math
-A = U \Sigma V^T
+A = U \Sigma V^{T}
 ```
 ```math
-A^+ = V \Sigma_\lambda^+ U^T
+A^{+} = V \Sigma^{+}_{\lambda} U^{T}
 ```
 
 The strict Moore-Penrose reciprocal is `1 / sigma`. This implementation uses a

@@ -3,6 +3,7 @@
 import math
 
 import numpy as np
+import sympy as sp
 
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
 
@@ -50,14 +51,41 @@ def _singularity_robust_reciprocal(sigma, damping):
     return sigma / (sigma**2 + damping**2)
 
 
-def pseudoinverse(A, damping=DEFAULT_DAMPING):
-    """Compute a singularity-robust pseudoinverse without ``np.linalg.pinv``."""
+def pseudoinverse_components(A, damping=DEFAULT_DAMPING):
+    """Return the SVD pieces used to assemble the manual pseudoinverse."""
     U, singular_values, Vh = np.linalg.svd(A, full_matrices=False)
     sigma_plus = np.diag(
         [_singularity_robust_reciprocal(sigma, damping) for sigma in singular_values]
     )
 
+    return U, sigma_plus, Vh
+
+
+def pseudoinverse(A, damping=DEFAULT_DAMPING):
+    """Compute a singularity-robust pseudoinverse without ``np.linalg.pinv``."""
+    U, sigma_plus, Vh = pseudoinverse_components(A, damping)
+
     return Vh.transpose() @ sigma_plus @ U.transpose()
+
+
+def pseudoinverse_equations(A):
+    """Return symbolic SVD/pseudoinverse equations matching ``pseudoinverse``."""
+    rows, columns = A.shape
+    rank = min(rows, columns)
+
+    A_sym = sp.MatrixSymbol("A", rows, columns)
+    U = sp.MatrixSymbol("U", rows, rank)
+    sigma = sp.MatrixSymbol(r"\Sigma", rank, rank)
+    V_t = sp.MatrixSymbol("V^T", rank, columns)
+    A_plus = sp.MatrixSymbol("A^+", columns, rows)
+    V = sp.MatrixSymbol("V", columns, rank)
+    sigma_plus = sp.MatrixSymbol(r"\Sigma_\lambda^+", rank, rank)
+    U_t = sp.MatrixSymbol("U^T", rank, rows)
+
+    return (
+        sp.Eq(A_sym, sp.MatMul(U, sigma, V_t, evaluate=False)),
+        sp.Eq(A_plus, sp.MatMul(V, sigma_plus, U_t, evaluate=False)),
+    )
 
 
 def allocated_squared_speeds(u, motors_active=None, C=1, damping=DEFAULT_DAMPING):
