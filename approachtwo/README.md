@@ -13,6 +13,10 @@ Each motor still uses the same quadratic propeller model as approach one.
 ```math
 F_{i} = C n_{i}^{2}
 ```
+The rigid-body torque expression below is derived by the same SymPy cross product used by the generated simulator.
+```math
+\tau_{i} = \left[\begin{matrix}0\\f_{i} r_{z_i}\\- f_{i} r_{y_i}\end{matrix}\right]
+```
 The allocator works in squared-speed space, so the command vector is a linear matrix product.
 ```math
 u = A w^{2}
@@ -20,18 +24,12 @@ u = A w^{2}
 
 ## Matrix source of truth
 
-The allocation matrix is built from `common.geometry`, not copied by hand. The
-three rows are pitch torque, yaw torque, and thrust. Because thrust points along
-body x, the cross product gives `tau_y = r_z F` and `tau_z = -r_y F`.
+The allocation matrix is built from `common.model.rigid_body_motion()` and the
+shared geometry constants, not from hand-entered README values. The three rows
+are pitch torque, yaw torque, and thrust.
 ```python
-A = np.array(
-    [
-        MOTOR_R_Z,
-        [-r_y for r_y in MOTOR_R_Y],
-        [1] * N_MOTORS,
-    ],
-    dtype=float,
-)
+tau_y, tau_z, thrust = rigid_body_motion()
+A = allocation_matrix_from_equations()
 ```
 With the current shared geometry this expands to:
 ```math
@@ -69,12 +67,12 @@ w = tuple(math.sqrt(max(float(speed_sq), 0)) for speed_sq in w_sq.flatten())
 ## Motor-out example
 
 To make the numbers concrete, the generator also runs a motor-out case with
-motor 0 disabled. Multiplying by `motors_active` zeroes that motor column in the
-allocation matrix:
+motor 0 disabled. The motor-out allocation matrix is derived from the same
+symbolic equations, then the inactive motor mask zeroes the failed motor column:
 ```math
-A = \left[\begin{matrix}0.0 & -1.0 & -1.0 & -1.0 & 1.0 & 1.0 & 1.0 & 1.0\\0.0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0\end{matrix}\right]
+A = \left[\begin{matrix}0 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
 ```
-The pseudoinverse matrix below is the actual matrix used to produce squared-speed commands for this motor-out case. Row 0 is all zeros, so the failed motor receives no command.
+The pseudoinverse matrix below is computed from that real motor-out allocation matrix and is the actual matrix used to produce squared-speed commands. Row 0 is all zeros, so the failed motor receives no command.
 The actual `A_plus` motor-out matrix is:
 ```math
 \left[\begin{matrix}0.0 & 0.0 & 0.0\\-0.2046 & 0.1519 & 0.2046\\-0.1375 & -0.1168 & 0.1375\\-0.1579 & -0.035 & 0.1579\\0.0812 & 0.1752 & 0.1688\\0.1016 & 0.0935 & 0.1484\\0.1688 & -0.1752 & 0.0812\\0.1484 & -0.0935 & 0.1016\end{matrix}\right]

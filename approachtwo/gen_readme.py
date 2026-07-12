@@ -9,6 +9,7 @@ from approachtwo.model import (
     pseudoinverse,
 )
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
+from common.model import rigid_body_motion, single_motor_torque
 
 
 def math_block(expr):
@@ -29,20 +30,50 @@ def numeric_matrix_block(matrix, decimals=4):
     return math_block(sp.Matrix(rounded))
 
 
-A = sp.Matrix(
-    [
-        MOTOR_R_Z,
-        [-r_y for r_y in MOTOR_R_Y],
-        [1] * N_MOTORS,
+def geometry_substitutions():
+    """Return substitutions for the shared numeric motor geometry."""
+    subs = {}
+    for motor_index, r_y in enumerate(MOTOR_R_Y):
+        subs[f"r_y{motor_index}"] = r_y
+    for motor_index, r_z in enumerate(MOTOR_R_Z):
+        subs[f"r_z{motor_index}"] = r_z
+
+    return subs
+
+
+def allocation_matrix_from_equations(active_motors=None):
+    """Build the allocation matrix from the same symbolic equations as the sim."""
+    if active_motors is None:
+        active_motors = [1] * N_MOTORS
+
+    tau_y, tau_z, thrust = rigid_body_motion()
+    equations = [
+        tau_y.subs(geometry_substitutions()),
+        tau_z.subs(geometry_substitutions()),
+        thrust,
     ]
-)
+    force_symbols = sp.symbols(f"f0:{N_MOTORS}")
+
+    return sp.Matrix(
+        [
+            [
+                sp.expand(equation).coeff(force) * active
+                for force, active in zip(force_symbols, active_motors)
+            ]
+            for equation in equations
+        ]
+    )
+
+
+_, _, tau_i = single_motor_torque()
+A = allocation_matrix_from_equations()
 A_sym = sp.MatrixSymbol("A", 3, N_MOTORS)
 w_sq_sym = sp.MatrixSymbol("w^2", N_MOTORS, 1)
 u_sym = sp.MatrixSymbol("u", 3, 1)
 
 motor_out_active = [0, 1, 1, 1, 1, 1, 1, 1]
-motor_out_A = create_A(motor_out_active)
-motor_out_pseudoinverse = pseudoinverse(motor_out_A)
+motor_out_A = allocation_matrix_from_equations(motor_out_active)
+motor_out_pseudoinverse = pseudoinverse(create_A(motor_out_active))
 motor_out_command = (0, 0, 100)
 motor_out_w_sq = allocated_squared_speeds(motor_out_command, motor_out_active)
 motor_out_w = allocated_motor_speeds(motor_out_command, motor_out_active)
@@ -59,27 +90,25 @@ how much squared speed each motor should carry.
 
 Each motor still uses the same quadratic propeller model as approach one.
 """
-readme += math_block(sp.Eq(sp.Symbol("F_i"), sp.Symbol("C") * sp.Symbol("n_i") ** 2))
+readme += math_block(
+    sp.Eq(sp.Symbol("F_i"), sp.Symbol("C") * sp.Symbol("n_i") ** 2)
+)
+readme += "The rigid-body torque expression below is derived by the same SymPy cross product used by the generated simulator.\n"
+readme += math_block(sp.Eq(sp.MatrixSymbol(r"\tau_i", 3, 1), tau_i))
 readme += "The allocator works in squared-speed space, so the command vector is a linear matrix product.\n"
 readme += math_block(sp.Eq(u_sym, A_sym * w_sq_sym))
 
 readme += """
 ## Matrix source of truth
 
-The allocation matrix is built from `common.geometry`, not copied by hand. The
-three rows are pitch torque, yaw torque, and thrust. Because thrust points along
-body x, the cross product gives `tau_y = r_z F` and `tau_z = -r_y F`.
+The allocation matrix is built from `common.model.rigid_body_motion()` and the
+shared geometry constants, not from hand-entered README values. The three rows
+are pitch torque, yaw torque, and thrust.
 """
 readme += code_block(
     """
-A = np.array(
-    [
-        MOTOR_R_Z,
-        [-r_y for r_y in MOTOR_R_Y],
-        [1] * N_MOTORS,
-    ],
-    dtype=float,
-)
+tau_y, tau_z, thrust = rigid_body_motion()
+A = allocation_matrix_from_equations()
 """
 )
 readme += "With the current shared geometry this expands to:\n"
@@ -106,10 +135,15 @@ singularity-robust reciprocal instead:
 readme += math_block(
     sp.Eq(
         sp.Symbol(r"\sigma_{\lambda}^{+}"),
-        sp.Symbol(r"\sigma") / (sp.Symbol(r"\sigma") ** 2 + sp.Symbol(r"\lambda") ** 2),
+        sp.Symbol(r"\sigma")
+        / (sp.Symbol(r"\sigma") ** 2 + sp.Symbol(r"\lambda") ** 2),
     )
 )
-readme += f"The default damping is `{DEFAULT_DAMPING}`. Away from singularities this is effectively the textbook pseudoinverse, but near lost-motor or rank-deficient cases the reciprocal stays finite.\n"
+readme += (
+    f"The default damping is `{DEFAULT_DAMPING}`. Away from singularities this "
+    "is effectively the textbook pseudoinverse, but near lost-motor or "
+    "rank-deficient cases the reciprocal stays finite.\n"
+)
 
 readme += """
 ## Allocation flow
@@ -129,14 +163,22 @@ readme += """
 ## Motor-out example
 
 To make the numbers concrete, the generator also runs a motor-out case with
-motor 0 disabled. Multiplying by `motors_active` zeroes that motor column in the
-allocation matrix:
+motor 0 disabled. The motor-out allocation matrix is derived from the same
+symbolic equations, then the inactive motor mask zeroes the failed motor column:
 """
-readme += math_block(sp.Eq(A_sym, sp.Matrix(motor_out_A)))
-readme += "The pseudoinverse matrix below is the actual matrix used to produce squared-speed commands for this motor-out case. Row 0 is all zeros, so the failed motor receives no command.\n"
+readme += math_block(sp.Eq(A_sym, motor_out_A))
+readme += (
+    "The pseudoinverse matrix below is computed from that real motor-out "
+    "allocation matrix and is the actual matrix used to produce squared-speed "
+    "commands. Row 0 is all zeros, so the failed motor receives no command.\n"
+)
 readme += "The actual `A_plus` motor-out matrix is:\n"
 readme += numeric_matrix_block(motor_out_pseudoinverse)
-readme += "For any command vector `u`, the allocator computes `w_sq = A_plus @ u` from this matrix and then square-roots the non-negative entries. For example, with `u = [0, 0, 100]` the squared-speed command is:\n"
+readme += (
+    "For any command vector `u`, the allocator computes `w_sq = A_plus @ u` "
+    "from this matrix and then square-roots the non-negative entries. For "
+    "example, with `u = [0, 0, 100]` the squared-speed command is:\n"
+)
 readme += numeric_matrix_block(motor_out_w_sq)
 readme += "and the final motor-speed command is:\n"
 readme += numeric_matrix_block(np.array(motor_out_w).reshape(N_MOTORS, 1))
