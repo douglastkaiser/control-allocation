@@ -65,3 +65,25 @@ so callers never receive imaginary speeds.
 w_sq = pseudoinverse(A, damping) @ command
 w = tuple(math.sqrt(max(float(speed_sq), 0)) for speed_sq in w_sq.flatten())
 ```
+
+## Motor-out example
+
+To make the numbers concrete, the generator also runs a motor-out case with
+motor 0 disabled. Multiplying by `motors_active` zeroes that motor column in the
+allocation matrix:
+```math
+A = \left[\begin{matrix}0.0 & -1.0 & -1.0 & -1.0 & 1.0 & 1.0 & 1.0 & 1.0\\0.0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0 & 1.0\end{matrix}\right]
+```
+The pseudoinverse matrix below is the actual matrix used to produce squared-speed commands for this motor-out case. Row 0 is all zeros, so the failed motor receives no command.
+The actual `A_plus` motor-out matrix is:
+```math
+\left[\begin{matrix}0.0 & 0.0 & 0.0\\-0.2046 & 0.1519 & 0.2046\\-0.1375 & -0.1168 & 0.1375\\-0.1579 & -0.035 & 0.1579\\0.0812 & 0.1752 & 0.1688\\0.1016 & 0.0935 & 0.1484\\0.1688 & -0.1752 & 0.0812\\0.1484 & -0.0935 & 0.1016\end{matrix}\right]
+```
+For any command vector `u`, the allocator computes `w_sq = A_plus @ u` from this matrix and then square-roots the non-negative entries. For example, with `u = [0, 0, 100]` the squared-speed command is:
+```math
+\left[\begin{matrix}0.0\\20.4634\\13.7461\\15.7905\\16.8808\\14.8364\\8.1192\\10.1636\end{matrix}\right]
+```
+and the final motor-speed command is:
+```math
+\left[\begin{matrix}0.0\\4.5236\\3.7076\\3.9737\\4.1086\\3.8518\\2.8494\\3.188\end{matrix}\right]
+```
