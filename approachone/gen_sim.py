@@ -1,7 +1,7 @@
 import sympy as sp
 from common import utils
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z
-from model import rigid_body_motion
+from common.model import rigid_body_motion
 
 
 tau_y, tau_z, thrust = rigid_body_motion()
