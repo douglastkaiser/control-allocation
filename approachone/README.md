@@ -2,10 +2,12 @@
 # Control Allocation First Approach
 
 
-This approach treats each motor as a thrust source mounted at a known position on
-the vehicle. The controller asks for pitch torque, yaw torque, and total thrust;
-the allocator converts those commands into motor speeds; the simulator applies
-the same geometry to predict the resulting rates and airspeed.
+This approach is intentionally simple: it groups the eight motors into four
+quadrants instead of allocating against each motor independently. The controller
+asks for pitch torque, yaw torque, and total thrust; the allocator turns each
+command into rotor-speed contributions and sums those commanded rotor speeds per
+quadrant. The simulator still applies the per-motor geometry to predict the
+resulting rates and airspeed.
 
 ## Building blocks
 
