@@ -6,10 +6,41 @@ from common.geometry import N_MOTORS
 
 
 n_motors = N_MOTORS
+INERTIA_SYMBOLS = sp.symbols("I_xx I_xy I_xz I_yx I_yy I_yz I_zx I_zy I_zz")
 
 
-def rigid_body_motion():
-    """Build symbolic thrust and torque equations for all motors."""
+def inertia_matrix():
+    """Return the symbolic body inertia matrix."""
+    I_xx, I_xy, I_xz, I_yx, I_yy, I_yz, I_zx, I_zy, I_zz = INERTIA_SYMBOLS
+
+    return sp.Matrix(
+        [
+            [I_xx, I_xy, I_xz],
+            [I_yx, I_yy, I_yz],
+            [I_zx, I_zy, I_zz],
+        ]
+    )
+
+
+def default_inertia_substitutions():
+    """Return simple inertia values used by generated examples today."""
+    I_xx, I_xy, I_xz, I_yx, I_yy, I_yz, I_zx, I_zy, I_zz = INERTIA_SYMBOLS
+
+    return {
+        I_xx: 1,
+        I_xy: 0,
+        I_xz: 0,
+        I_yx: 0,
+        I_yy: 1,
+        I_yz: 0,
+        I_zx: 0,
+        I_zy: 0,
+        I_zz: 1,
+    }
+
+
+def rigid_body_torque():
+    """Build the symbolic torque vector and thrust equation for all motors."""
     # motor positions
     r_x = sp.Matrix(sp.symbols("r_x:%d" % n_motors))
     r_y = sp.Matrix(sp.symbols("r_y:%d" % n_motors))
@@ -23,11 +54,23 @@ def rigid_body_motion():
     tau_vec = sum(
         (r_expr[i].cross(F[i] * xhat) for i in range(n_motors)), sp.zeros(3, 1)
     )
-    tau_y = tau_vec[1]
-    tau_z = tau_vec[2]
     thrust = sum(F[i] for i in range(n_motors))
 
+    return tau_vec, thrust
+
+
+def rigid_body_motion():
+    """Build symbolic thrust and torque equations for all motors."""
+    tau_vec, thrust = rigid_body_torque()
+    tau_y = tau_vec[1]
+    tau_z = tau_vec[2]
+
     return tau_y, tau_z, thrust
+
+
+def angular_acceleration(tau_vec):
+    """Return angular acceleration from the full inertia matrix and torque."""
+    return inertia_matrix().inv() * tau_vec
 
 
 def single_motor_torque():

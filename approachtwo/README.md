@@ -17,6 +17,10 @@ The rigid-body torque expression below is derived by the same SymPy cross produc
 ```math
 \tau_{i} = \left[\begin{matrix}0\\f_{i} r_{z_i}\\- f_{i} r_{y_i}\end{matrix}\right]
 ```
+The full inertia matrix is also part of the shared model. The generators currently substitute unit diagonal values and zero off-diagonal values at the end, but pitch and yaw rates are first derived through this matrix so axis coupling is not hidden.
+```math
+I = \left[\begin{matrix}I_{xx} & I_{xy} & I_{xz}\\I_{yx} & I_{yy} & I_{yz}\\I_{zx} & I_{zy} & I_{zz}\end{matrix}\right]
+```
 The allocator works in squared-speed space, so the command vector is a linear matrix product.
 ```math
 u = A w^{2}

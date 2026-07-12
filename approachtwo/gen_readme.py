@@ -10,7 +10,7 @@ from approachtwo.model import (
     pseudoinverse_equations,
 )
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
-from common.model import rigid_body_motion, single_motor_torque
+from common.model import inertia_matrix, rigid_body_motion, single_motor_torque
 
 
 def math_block(expr):
@@ -96,6 +96,13 @@ readme += math_block(
 )
 readme += "The rigid-body torque expression below is derived by the same SymPy cross product used by the generated simulator.\n"
 readme += math_block(sp.Eq(sp.MatrixSymbol(r"\tau_i", 3, 1), tau_i))
+readme += (
+    "The full inertia matrix is also part of the shared model. The generators "
+    "currently substitute unit diagonal values and zero off-diagonal values at "
+    "the end, but pitch and yaw rates are first derived through this matrix so "
+    "axis coupling is not hidden.\n"
+)
+readme += math_block(sp.Eq(sp.MatrixSymbol("I", 3, 3), inertia_matrix()))
 readme += "The allocator works in squared-speed space, so the command vector is a linear matrix product.\n"
 readme += math_block(sp.Eq(u_sym, A_sym * w_sq_sym))
 
