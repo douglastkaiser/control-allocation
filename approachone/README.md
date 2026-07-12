@@ -20,10 +20,10 @@ T = \sum_{i=0}^{7} F_{i}
 ```
 Each propeller is modeled with the usual quadratic thrust relationship, then collapsed into a single coefficient used by the generated code.
 ```math
-\mathbf{F_i} = C_{T} D^{4} \rho n^{2}
+\mathbf{F_i} = C_{T} D^{4} \rho n_{i}^{2}
 ```
 ```math
-\mathbf{F_i} = C n^{2}
+\mathbf{F_i} = C n_{i}^{2}
 ```
 
 ## SymPy source of truth
