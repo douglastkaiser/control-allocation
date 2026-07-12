@@ -1,91 +1,57 @@
 import sympy as sp
 from common import utils
+from common.geometry import (
+    ALLOCATION_R_QUADRANT_Y,
+    ALLOCATION_R_QUADRANT_Z,
+    N_MOTORS,
+)
+
+
+def allocated_motor_speeds(tau_y, tau_z, thrust, C, r_quadrant_y, r_quadrant_z):
+    """Build symbolic motor speeds from desired torque and thrust commands."""
+    thrust_per_motor = thrust / N_MOTORS
+    base_speed = sp.sqrt(sp.Max(thrust_per_motor, 0) / C)
+    w = [base_speed for _ in range(N_MOTORS)]
+
+    for tau, quadrant_r in ((tau_y, r_quadrant_y), (tau_z, r_quadrant_z)):
+        tau_per_quadrant = tau / 4
+        for quadrant, r in enumerate(quadrant_r):
+            quadrant_thrust = tau_per_quadrant / r
+            speed_delta = sp.sqrt(sp.Abs(quadrant_thrust) / 2 / C) * sp.sign(
+                quadrant_thrust
+            )
+            motor_index = quadrant * 2
+            w[motor_index] += speed_delta
+            w[motor_index + 1] += speed_delta
+
+    return [sp.Max(wx, 0) for wx in w]
+
 
 tau_y, tau_z, thrust = sp.symbols("tau_y, tau_z, thrust")
+C = sp.Symbol("C", positive=True)
 
-r_quadrant_0_y, r_quadrant_1_y, r_quadrant_2_y, r_quadrant_3_y = sp.symbols(
+r_quadrant_y = sp.symbols(
     "r_quadrant_0_y r_quadrant_1_y r_quadrant_2_y r_quadrant_3_y"
 )
-r_quadrant_0_z, r_quadrant_1_z, r_quadrant_2_z, r_quadrant_3_z = sp.symbols(
+r_quadrant_z = sp.symbols(
     "r_quadrant_0_z r_quadrant_1_z r_quadrant_2_z r_quadrant_3_z"
 )
 
-# actual math
-thrust_per_motor = thrust / 8
+w = allocated_motor_speeds(tau_y, tau_z, thrust, C, r_quadrant_y, r_quadrant_z)
 
-C = sp.Symbol("C", positive=True)
-# C = 1
-w0 = w1 = w2 = w3 = w4 = w5 = w6 = w7 = sp.sqrt(sp.Max(thrust_per_motor, 0) / C)
+allocation_geometry_subs = {}
+for r_symbol, r_value in zip(r_quadrant_y, ALLOCATION_R_QUADRANT_Y):
+    allocation_geometry_subs[r_symbol] = r_value
+for r_symbol, r_value in zip(r_quadrant_z, ALLOCATION_R_QUADRANT_Z):
+    allocation_geometry_subs[r_symbol] = r_value
 
-tau_y_per_quadrant = tau_y / 4
-thrust_quadrant_0 = tau_y_per_quadrant / r_quadrant_0_y
-thrust_quadrant_1 = tau_y_per_quadrant / r_quadrant_1_y
-thrust_quadrant_2 = tau_y_per_quadrant / r_quadrant_2_y
-thrust_quadrant_3 = tau_y_per_quadrant / r_quadrant_3_y
-
-# positive tau from back wing thrust
-w0 += sp.sqrt(sp.Abs(thrust_quadrant_0) / 2 / C) * sp.sign(thrust_quadrant_0)
-w1 += sp.sqrt(sp.Abs(thrust_quadrant_0) / 2 / C) * sp.sign(thrust_quadrant_0)
-w2 += sp.sqrt(sp.Abs(thrust_quadrant_1) / 2 / C) * sp.sign(thrust_quadrant_1)
-w3 += sp.sqrt(sp.Abs(thrust_quadrant_1) / 2 / C) * sp.sign(thrust_quadrant_1)
-w4 += sp.sqrt(sp.Abs(thrust_quadrant_2) / 2 / C) * sp.sign(thrust_quadrant_2)
-w5 += sp.sqrt(sp.Abs(thrust_quadrant_2) / 2 / C) * sp.sign(thrust_quadrant_2)
-w6 += sp.sqrt(sp.Abs(thrust_quadrant_3) / 2 / C) * sp.sign(thrust_quadrant_3)
-w7 += sp.sqrt(sp.Abs(thrust_quadrant_3) / 2 / C) * sp.sign(thrust_quadrant_3)
-
-tau_z_per_quadrant = tau_z / 4
-thrust_quadrant_0 = tau_z_per_quadrant / r_quadrant_0_z
-thrust_quadrant_1 = tau_z_per_quadrant / r_quadrant_1_z
-thrust_quadrant_2 = tau_z_per_quadrant / r_quadrant_2_z
-thrust_quadrant_3 = tau_z_per_quadrant / r_quadrant_3_z
-w0 += sp.sqrt(sp.Abs(thrust_quadrant_0) / 2 / C) * sp.sign(thrust_quadrant_0)
-w1 += sp.sqrt(sp.Abs(thrust_quadrant_0) / 2 / C) * sp.sign(thrust_quadrant_0)
-w2 += sp.sqrt(sp.Abs(thrust_quadrant_1) / 2 / C) * sp.sign(thrust_quadrant_1)
-w3 += sp.sqrt(sp.Abs(thrust_quadrant_1) / 2 / C) * sp.sign(thrust_quadrant_1)
-w4 += sp.sqrt(sp.Abs(thrust_quadrant_2) / 2 / C) * sp.sign(thrust_quadrant_2)
-w5 += sp.sqrt(sp.Abs(thrust_quadrant_2) / 2 / C) * sp.sign(thrust_quadrant_2)
-w6 += sp.sqrt(sp.Abs(thrust_quadrant_3) / 2 / C) * sp.sign(thrust_quadrant_3)
-w7 += sp.sqrt(sp.Abs(thrust_quadrant_3) / 2 / C) * sp.sign(thrust_quadrant_3)
-
-w0 = sp.Max(w0, 0)
-w1 = sp.Max(w1, 0)
-w2 = sp.Max(w2, 0)
-w3 = sp.Max(w3, 0)
-w4 = sp.Max(w4, 0)
-w5 = sp.Max(w5, 0)
-w6 = sp.Max(w6, 0)
-w7 = sp.Max(w7, 0)
-
-w = [w0, w1, w2, w3, w4, w5, w6, w7]
-
-# subs
-w = [wx.subs("f0", thrust_quadrant_0) for wx in w]
-w = [wx.subs("f1", thrust_quadrant_0) for wx in w]
-w = [wx.subs("f2", thrust_quadrant_1) for wx in w]
-w = [wx.subs("f3", thrust_quadrant_1) for wx in w]
-w = [wx.subs("f4", thrust_quadrant_2) for wx in w]
-w = [wx.subs("f5", thrust_quadrant_2) for wx in w]
-w = [wx.subs("f6", thrust_quadrant_3) for wx in w]
-w = [wx.subs("f7", thrust_quadrant_3) for wx in w]
+w = [motor_speed.subs(allocation_geometry_subs) for motor_speed in w]
 
 allocate_file = "# This file is auto-generated\n"
 allocate_file += "import math\n"
 allocate_file += utils.generate_python_function(
     "allocate",
-    (
-        tau_y,
-        tau_z,
-        thrust,
-        C,
-        r_quadrant_0_y,
-        r_quadrant_1_y,
-        r_quadrant_2_y,
-        r_quadrant_3_y,
-        r_quadrant_0_z,
-        r_quadrant_1_z,
-        r_quadrant_2_z,
-        r_quadrant_3_z,
-    ),
+    (tau_y, tau_z, thrust, C),
     w,
 )
 with open("allocate.py", "w") as f:
