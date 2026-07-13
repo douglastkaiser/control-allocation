@@ -85,6 +85,63 @@ forms are what the generated simulator ultimately evaluates.
 \tau_{z} = 1.5 f_{0} + 0.8 f_{1} - 1.5 f_{2} - 0.8 f_{3} + 1.5 f_{4} + 0.8 f_{5} - 1.5 f_{6} - 0.8 f_{7}
 ```
 
+## Continuous-time analysis of the generated loop
+
+The continuous-time view is computed from the runnable approach-one stack rather
+than from a separate hand model. `approachone.continuous.analyze()` linearizes the
+actual `allocate -> sim` path about the hover trim, then wraps that local plant in
+a compact state-space model for Bode, controllability, stability, robustness, and
+observability discussion. The trim command and state are:
+```python
+trim_command = (0.0, 0.0, 100.0)
+trim_state = (0.0, 0.0, 10.0)
+trim_motor_speeds = (3.7081, 3.7081, 3.7081, 3.7081, 3.3541, 3.3541, 3.3541, 3.3541)
+```
+The local command-to-output gain matrix uses continuous units for pitch and yaw rows and static gain for airspeed.
+|  | tau_y | tau_z | T |
+| --- | --- | --- | --- |
+| pitch rate q | 1 | 7.105e-10 | 1.776e-10 |
+| yaw rate r | -1.776e-10 | -6774 | -8.882e-11 |
+| airspeed u | 0 | -8.882e-11 | 0.05 |
+
+For classical Bode intuition, the diagonal channels reduce to these local transfer functions:
+
+![Approach one continuous-time Bode plot](assets/continuous_bode.png)
+
+| channel | local transfer function |
+| --- | --- |
+| pitch | `1 / s` |
+| yaw | `-6.77e+03 / s` |
+| airspeed | `0.05 / (s + 1)` |
+
+
+The corresponding state-space plant uses the rate axes as integrators and models
+the airspeed channel as a first-order lag with the static thrust-to-airspeed gain
+reported above. With the documented sign-aware diagonal proportional gains, the
+closed-loop eigenvalues are `(-1.0, -6.7738, -1.5)`, so the local verdict is **stable for the documented diagonal proportional gains**.
+
+Controllability and observability are both full rank for this three-state local
+model: controllability rank `3` and observability
+rank `3`. That means the abstract pitch, yaw, and
+airspeed channels can be independently moved and seen near the trim point. It
+does **not** mean approach one is robust to hardware failures; the quadrant
+allocator has already hidden the individual motor degrees of freedom.
+
+Robustness notes from the analysis:
+
+- The hover linearization is nearly diagonal: each high-level command primarily moves its matching output.
+- Yaw allocation uses sqrt(abs(tau_z)), so the exact derivative at zero yaw command is singular; the table reports a small-signal finite-difference slope.
+- The allocator hides individual motors, so this analysis cannot certify motor-out robustness.
+- Bode margins are meaningful per channel near hover, but saturation and square-root clipping are outside the linear model.
+
+
+The important limitation is the yaw nonlinearity: approach one commands signed
+`sqrt(abs(tau_z))` deltas, so the exact derivative at zero yaw command is not a
+well-behaved linear slope. The generated table therefore reports a small
+finite-difference slope for stack-level documentation, while later approaches
+replace this shortcut with allocation matrices that are better suited to formal
+controllability and robustness analysis.
+
 ## Why this is not enough
 
 This version is valuable because every step is visible: thrust and pitch are

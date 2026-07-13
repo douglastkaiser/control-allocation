@@ -1,46 +1,63 @@
-import control as ctrl
-import matplotlib.pyplot as plt
+"""Continuous-time small-signal analysis for approach one's sim loop."""
+
+from __future__ import annotations
+
 import numpy as np
 
-#### EXAMPLE CODE ONLY
+from approachone.allocate import allocate
+from approachone.sim import sim
+from common.continuous import (
+    StateSpaceAnalysis,
+    analyze_state_space,
+    bode_channel_summary,
+    finite_difference,
+    save_bode_plot,
+)
 
-# Define Plant Transfer Function: P(s) = 1 / (s^2 + 2s + 1)
-plant_num = [1]
-plant_den = [1, 2, 1]
-P = ctrl.tf(plant_num, plant_den)
-
-# Define PID Controller: C(s) = Kp + Ki/s + Kd*s
-# Let's use Kp=10, Ki=5, Kd=2
-# C(s) = (Kd*s^2 + Kp*s + Ki) / s
-Kp, Ki, Kd = 10, 5, 2
-pid_num = [Kd, Kp, Ki]
-pid_den = [1, 0]
-C = ctrl.tf(pid_num, pid_den)
-
-# Calculate Open Loop and Closed Loop Transfer Functions
-open_loop = C * P
-closed_loop = ctrl.feedback(open_loop, 1)
+C = 1.0
+DT = 1.0e-3
+TRIM_COMMAND = np.array([0.0, 0.0, 100.0])
+TRIM_STATE = np.array([0.0, 0.0, 10.0])
 
 
-# Analyze Stability Margins
-gm, pm, wg, wp = ctrl.margin(open_loop)
-print(f"Gain Margin: {gm:.2f}")
-print(f"Phase Margin: {pm:.2f} degrees")
-
-# Generate Bode Plot
-plt.figure()
-ctrl.bode_plot(open_loop, dB=True, Phase=True)
-plt.suptitle("Open-Loop Bode Plot")
-plt.show()
+def _loop_output(command: np.ndarray, state: np.ndarray = TRIM_STATE) -> np.ndarray:
+    motors = allocate(*command, C)
+    return np.array(sim(*motors, *state, C, DT), dtype=float)
 
 
-# Sensitivity and Complementary Sensitivity
-S = ctrl.feedback(1, open_loop)
-T = ctrl.feedback(open_loop, 1)
+def _allocation_jacobian(step: float = 1.0e-5) -> np.ndarray:
+    return finite_difference(
+        lambda command: np.array(allocate(*command, C)), TRIM_COMMAND, step
+    )
 
-# Plotting
-omega = np.logspace(-2, 2, 100)
-plt.figure()
-ctrl.bode_plot(T, omega, dB=True)
-plt.suptitle("Closed-Loop Transfer Function (T)")
-plt.show()
+
+def _command_jacobian(step: float = 1.0e-5) -> np.ndarray:
+    jac = finite_difference(lambda command: _loop_output(command), TRIM_COMMAND, step)
+    jac[0:2, :] /= DT
+    return jac
+
+
+def analyze(
+    p_gains: tuple[float, float, float] = (1.0, -1.0e-3, 10.0)
+) -> StateSpaceAnalysis:
+    """Linearize the generated approach-one stack around hover."""
+    return analyze_state_space(
+        trim_command=TRIM_COMMAND,
+        trim_state=TRIM_STATE,
+        motor_trim=np.array(allocate(*TRIM_COMMAND, C), dtype=float),
+        allocation_jacobian=_allocation_jacobian(),
+        command_jacobian=_command_jacobian(),
+        p_gains=p_gains,
+        robustness_notes=(
+            "The hover linearization is nearly diagonal: each high-level command primarily moves its matching output.",
+            "Yaw allocation uses sqrt(abs(tau_z)), so the exact derivative at zero yaw command is singular; the table reports a small-signal finite-difference slope.",
+            "The allocator hides individual motors, so this analysis cannot certify motor-out robustness.",
+            "Bode margins are meaningful per channel near hover, but saturation and square-root clipping are outside the linear model.",
+        ),
+    )
+
+
+if __name__ == "__main__":
+    result = analyze()
+    print("command Jacobian:\n", result.command_jacobian)
+    print("closed-loop eigenvalues:", result.loop_eigenvalues)

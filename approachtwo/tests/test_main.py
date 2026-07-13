@@ -8,7 +8,7 @@ from approachtwo.allocate import (
     pseudoinverse,
 )
 from approachtwo.sim import sim
-
+from approachtwo.continuous import analyze, bode_channel_summary
 
 BALANCED_HOVER_SPEEDS = (
     *((13.75**0.5,) * 4),
@@ -51,3 +51,24 @@ def test_control_allocate_sim_round_trip_is_self_consistent():
     x_next = sim(*motor_speeds, 0, 0, 0, 1, 0.01)
 
     assert x_next == pytest.approx((0, 0, 10))
+
+
+def test_continuous_analysis_uses_per_motor_stack_near_hover():
+    result = analyze()
+
+    assert result.controllability_rank == 3
+    assert result.observability_rank == 3
+    assert result.command_jacobian[0, 0] == pytest.approx(1.0)
+    assert result.command_jacobian[1, 1] == pytest.approx(1.0)
+    assert result.command_jacobian[2, 2] == pytest.approx(0.05)
+    assert all(eig.real < 0 for eig in result.loop_eigenvalues)
+
+
+def test_approach_two_bode_channel_summary_documents_three_axes():
+    result = analyze()
+
+    assert [channel for channel, _ in bode_channel_summary(result)] == [
+        "pitch",
+        "yaw",
+        "airspeed",
+    ]
