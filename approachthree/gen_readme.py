@@ -239,6 +239,7 @@ hover = study((0, 0, 100))
 feasible = study((-40, 40, 100))
 saturating = study((80, 100, 100))
 aggressive = study((0, 150, 100))
+thrust_vs_attitude = study((0, 60, 190))
 
 # The failure scenarios documented in the controllability study. The nominal
 # case carries the saturation demo; the rest illustrate how losing motors
@@ -450,10 +451,13 @@ readme += latex_block(
     r"\end{aligned}"
 )
 readme += (
-    f"The weight matrix $W$ prioritises attitude over thrust and the effort "
-    f"weight $\\lambda$ is `{DEFAULT_REG:g}` -- the same role approach two's "
-    "damping plays, keeping the solution unique and the problem strictly "
-    "convex.\n"
+    "The weight matrix $W$ weights pitch and yaw far above thrust, so when the "
+    "vehicle saturates **thrust is sacrificed first**: attitude control is held "
+    "as a safety priority even at the cost of losing altitude or airspeed. The "
+    "ratio is large enough that the moments are held essentially exactly and the "
+    "whole shortfall is taken out of thrust. The effort weight $\\lambda$ is "
+    f"`{DEFAULT_REG:g}` -- the same role approach two's damping plays, keeping "
+    "the solution unique and the problem strictly convex.\n"
 )
 readme += math_block(sp.Eq(W_sym, W_matrix))
 readme += (
@@ -495,8 +499,10 @@ readme += """
 
 The table below runs a sweep of commands through the allocator. Feasible
 commands are delivered exactly; once a command leaves the polytope the allocator
-holds the prioritised axes and reports exactly how many motors are pinned to a
-limit -- there is no silent clipping.
+holds pitch and yaw and lets thrust sag, and it reports exactly how many motors
+are pinned to a limit -- there is no silent clipping. The last row is the clearest
+illustration of the priority: a command asking for near-maximum thrust *and* yaw
+keeps the full commanded yaw while thrust drops.
 """
 readme += "\n"
 readme += "| command | requested $(\\tau_y, \\tau_z, T)$ | delivered | motors on a limit | status |\n"
@@ -505,6 +511,7 @@ readme += command_row("hover", hover)
 readme += command_row("feasible maneuver", feasible)
 readme += command_row("aggressive yaw", aggressive)
 readme += command_row("combined, over-range", saturating)
+readme += command_row("high thrust + yaw", thrust_vs_attitude)
 readme += (
     "\nFor the over-range combined command the QP still returns a fully "
     "feasible squared-speed vector -- some motors floored at zero, others "

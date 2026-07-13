@@ -32,10 +32,13 @@ from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS
 # force, i.e. a total thrust of ``N_MOTORS * s_max``.
 DEFAULT_S_MAX = 25.0
 
-# Command-tracking weights for (tau_y, tau_z, thrust). Attitude authority is
-# prioritised over thrust: when the vehicle saturates it holds the commanded
-# moments and lets total thrust sag, which is the usual flight-control choice.
-DEFAULT_WEIGHTS = (10.0, 10.0, 1.0)
+# Command-tracking weights for (tau_y, tau_z, thrust). Pitch and yaw authority
+# are weighted far above thrust so that, when the vehicle saturates, thrust is
+# sacrificed first: attitude control is preserved as a safety priority even at
+# the cost of losing altitude or airspeed. The large ratio makes the trade-off
+# effectively lexicographic -- the moments are held essentially exactly and the
+# whole shortfall is taken out of thrust.
+DEFAULT_WEIGHTS = (1000.0, 1000.0, 1.0)
 
 # Tikhonov effort weight. Like approach two's damping it keeps the solution
 # unique in the null space of ``A`` (minimum control effort) and the Hessian

@@ -63,9 +63,9 @@ staying inside the box.
 ```math
 \begin{aligned}\min_{s}\ & \tfrac{1}{2}\,\lVert A s - u \rVert_W^{2} + \tfrac{\lambda}{2}\,\lVert s \rVert^{2} \\\text{s.t.}\ & 0 \le s \le s_{\max}\end{aligned}
 ```
-The weight matrix $W$ prioritises attitude over thrust and the effort weight $\lambda$ is `1e-06` -- the same role approach two's damping plays, keeping the solution unique and the problem strictly convex.
+The weight matrix $W$ weights pitch and yaw far above thrust, so when the vehicle saturates **thrust is sacrificed first**: attitude control is held as a safety priority even at the cost of losing altitude or airspeed. The ratio is large enough that the moments are held essentially exactly and the whole shortfall is taken out of thrust. The effort weight $\lambda$ is `1e-06` -- the same role approach two's damping plays, keeping the solution unique and the problem strictly convex.
 ```math
-W = \left[\begin{matrix}10 & 0 & 0\\0 & 10 & 0\\0 & 0 & 1\end{matrix}\right]
+W = \left[\begin{matrix}1000 & 0 & 0\\0 & 1000 & 0\\0 & 0 & 1\end{matrix}\right]
 ```
 Expanding the norms turns this into a standard convex QP with a positive definite Hessian, whose optimum is the projection of $u$ onto the polytope $\mathcal{A}$:
 ```math
@@ -93,8 +93,10 @@ w = allocated_motor_speeds(u, motors_active)      # = sqrt(s), always real & fea
 
 The table below runs a sweep of commands through the allocator. Feasible
 commands are delivered exactly; once a command leaves the polytope the allocator
-holds the prioritised axes and reports exactly how many motors are pinned to a
-limit -- there is no silent clipping.
+holds pitch and yaw and lets thrust sag, and it reports exactly how many motors
+are pinned to a limit -- there is no silent clipping. The last row is the clearest
+illustration of the priority: a command asking for near-maximum thrust *and* yaw
+keeps the full commanded yaw while thrust drops.
 
 | command | requested $(\tau_y, \tau_z, T)$ | delivered | motors on a limit | status |
 | --- | --- | --- | --- | --- |
@@ -102,6 +104,7 @@ limit -- there is no silent clipping.
 | feasible maneuver | (-40, 40, 100) | (-40.0, 40.0, 100.0) | 0 / 8 | yes |
 | aggressive yaw | (0, 150, 100) | (0.0, 115.0, 100.0) | 8 / 8 | **saturated** |
 | combined, over-range | (80, 100, 100) | (50.0, 75.0, 100.0) | 8 / 8 | **saturated** |
+| high thrust + yaw | (0, 60, 190) | (0.0, 60.0, 160.0) | 6 / 8 | **saturated** |
 
 For the over-range combined command the QP still returns a fully feasible squared-speed vector -- some motors floored at zero, others pinned at ``s_max`` -- rather than an infeasible one:
 ```math
