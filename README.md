@@ -46,6 +46,16 @@ command the motors cannot actually produce.
 pip install -e .
 ```
 
+## Regenerating generated artifacts
+
+Run every `gen_*.py` script, including code, README, and diagram generators, with:
+
+```bash
+python run_generators.py
+```
+
+Diagram generators write ignored PNG artifacts locally (for example `assets/continuous_bode.png`) so they can be reviewed and added intentionally when needed.
+
 ## Pre-commit
 
 ```bash

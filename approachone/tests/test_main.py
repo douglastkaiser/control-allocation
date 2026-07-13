@@ -2,7 +2,7 @@ import pytest
 
 from approachone.allocate import allocate
 from approachone.sim import sim
-
+from approachone.continuous import analyze, bode_channel_summary
 
 C = 1
 DT = 0.01
@@ -43,8 +43,27 @@ def test_control_allocate_sim_round_trip_is_self_consistent():
     assert x_next == pytest.approx((0, 0, 10))
 
     u_next = [
-        gain[0] * (cmd - actual)
-        for actual, cmd, gain in zip(x_next, x_cmd, gains)
+        gain[0] * (cmd - actual) for actual, cmd, gain in zip(x_next, x_cmd, gains)
     ]
 
     assert u_next == pytest.approx([0, 0, 0])
+
+
+def test_continuous_analysis_matches_generated_stack_near_hover():
+    result = analyze()
+
+    assert result.controllability_rank == 3
+    assert result.observability_rank == 3
+    assert result.command_jacobian[0, 0] == pytest.approx(1.0)
+    assert result.command_jacobian[2, 2] == pytest.approx(0.05)
+    assert all(eig.real < 0 for eig in result.loop_eigenvalues)
+
+
+def test_bode_channel_summary_documents_three_axes():
+    result = analyze()
+
+    assert [channel for channel, _ in bode_channel_summary(result)] == [
+        "pitch",
+        "yaw",
+        "airspeed",
+    ]
