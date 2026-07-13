@@ -80,6 +80,55 @@ w = tuple(math.sqrt(max(float(speed_sq), 0)) for speed_sq in w_sq.flatten())
 ```
 `gen_allocate.py` writes these runtime allocation functions into `allocate.py`; `model.py` imports that generated module so the generated allocator is the source used by the rest of approach two.
 
+## Continuous-time analysis of the generated loop
+
+Approach two uses the same shared state-space analysis helpers as approach one,
+but the linearization is now backed by the per-motor pseudoinverse allocator.
+The hover trim remains the same command/state pair, while the motor trim is a
+least-squares per-motor squared-speed solution:
+```python
+trim_command = (0.0, 0.0, 100.0)
+trim_state = (0.0, 0.0, 10.0)
+trim_motor_speeds = (3.7081, 3.7081, 3.7081, 3.7081, 3.3541, 3.3541, 3.3541, 3.3541)
+```
+The local command-to-output gain matrix is computed from the generated `allocate -> sim` loop.
+|  | tau_y | tau_z | T |
+| --- | --- | --- | --- |
+| pitch rate q | 1 | -4.441e-10 | 0 |
+| yaw rate r | 0 | 1 | -4.441e-10 |
+| airspeed u | 0 | -8.882e-11 | 0.05 |
+
+![Approach two continuous-time Bode plot](assets/continuous_bode.png)
+
+| channel | local transfer function |
+| --- | --- |
+| pitch | `1 / s` |
+| yaw | `1 / s` |
+| airspeed | `0.05 / (s + 1)` |
+
+
+The state-space model keeps pitch and yaw as integrators and uses a first-order
+airspeed lag with the stack-derived static gain. The closed-loop eigenvalues are
+`(-1.0, -1.0, -1.5)`, so the
+local verdict is **stable for the documented diagonal proportional gains**.
+
+The local controllability rank is `3` and the
+observability rank is `3`. In approach two this is
+more meaningful than the quadrant result because the allocation matrix exposes
+each motor column before the state-space summary is assembled.
+
+Robustness notes from the analysis:
+
+- The nominal allocation matrix has rank 3, so the three high-level command axes are locally available.
+- The pseudoinverse keeps per-motor authority visible and can be recomputed for motor-out masks.
+- The solution is still unconstrained: negative squared speeds are clipped only after allocation, so saturation robustness is not certified here.
+- Bode and state-space results describe the local hover loop before any clipping or motor limit is hit.
+
+
+These Bode and rank checks are still local, unconstrained analyses. They explain
+the hover loop and motor-out matrix intuition, but approach three is still needed
+for hard speed limits and attainable-set margins.
+
 ## Motor-out example
 
 To make the benefit of the matrix form concrete, the generator also runs a

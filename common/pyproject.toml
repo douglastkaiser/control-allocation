@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "common"
 version = "0.1.0"
-dependencies = ["matplotlib", "sympy", "ipython"]
+dependencies = ["matplotlib", "numpy", "sympy", "ipython"]
 
 [tool.setuptools.packages.find]
 include = ["common*"]
