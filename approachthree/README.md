@@ -10,13 +10,16 @@ commanded torque.
 
 Approach three keeps the exact same command interface -- pitch torque, yaw
 torque and total thrust -- but makes the per-motor **saturation limits** part of
-the problem. The set of commands the motors can actually deliver is a **polytope**
-in the three-axis command space, and allocation becomes a small **quadratic
-program (QP)** that projects the desired command onto that polytope. A request
-inside the polytope is delivered exactly; a request outside it is met by the
-closest command the motors can produce. Because the polytope is an explicit
-object we can also ask whether the vehicle is still **controllable** after one or
-more motors fail.
+the problem. This is the point where allocation stops being only an algebraic
+inverse and becomes a question about the set of commands the hardware can
+actually produce.
+
+That set is a **polytope** in the three-axis command space, and allocation
+becomes a small **quadratic program (QP)** that projects the desired command onto
+that polytope. A request inside the polytope is delivered exactly; a request
+outside it is met by the closest command the motors can produce. Because the
+polytope is an explicit object we can also ask whether the vehicle is still
+**controllable** after one or more motors fail.
 
 ## Building blocks
 
@@ -35,7 +38,7 @@ u = A s
 ```
 With the current shared geometry the allocation matrix is:
 ```math
-A = \left[\begin{matrix}-1 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\1.5 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\1 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
+A = \left[\begin{matrix}-0.9 & -0.9 & -0.9 & -0.9 & 1.1 & 1.1 & 1.1 & 1.1\\1.5 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\1 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
 ```
 
 ## Saturation makes the problem a polytope
@@ -102,13 +105,13 @@ keeps the full commanded yaw while thrust drops.
 | --- | --- | --- | --- | --- |
 | hover | (0, 0, 100) | (0.0, 0.0, 100.0) | 0 / 8 | yes |
 | feasible maneuver | (-40, 40, 100) | (-40.0, 40.0, 100.0) | 0 / 8 | yes |
-| aggressive yaw | (0, 150, 100) | (0.0, 115.0, 100.0) | 8 / 8 | **saturated** |
-| combined, over-range | (80, 100, 100) | (50.0, 75.0, 100.0) | 8 / 8 | **saturated** |
-| high thrust + yaw | (0, 60, 190) | (0.0, 60.0, 160.0) | 6 / 8 | **saturated** |
+| aggressive yaw | (0, 150, 100) | (10.0, 115.0, 100.0) | 8 / 8 | **saturated** |
+| combined, over-range | (80, 100, 100) | (58.8, 76.1, 101.4) | 7 / 8 | **saturated** |
+| high thrust + yaw | (0, 60, 190) | (0.0, 60.0, 158.3) | 6 / 8 | **saturated** |
 
 For the over-range combined command the QP still returns a fully feasible squared-speed vector -- some motors floored at zero, others pinned at ``s_max`` -- rather than an infeasible one:
 ```math
-\left[\begin{matrix}25.0\\0.0\\0.0\\0.0\\25.0\\25.0\\0.0\\25.0\end{matrix}\right]
+\left[\begin{matrix}25.0\\1.3784\\0.0\\0.0\\25.0\\25.0\\0.0\\25.0\end{matrix}\right]
 ```
 
 ## Controllability under motor failure
@@ -131,14 +134,14 @@ The hover trim used here is $(0, 0, 100)$. Every row is produced by `approachthr
 
 | scenario | motors | rank | attainable volume | vs nominal | hover margin | controllable |
 | --- | --- | --- | --- | --- | --- | --- |
-| nominal (8 motors) | 8 | 3 | 2,650,000 | 100% | 70.7 | yes |
-| 1 out - outer (motor 0) | 7 | 3 | 1,568,750 | 59% | 35.4 | yes |
-| 1 out - inner (motor 1) | 7 | 3 | 1,743,750 | 66% | 35.4 | yes |
-| 2 out - adjacent (motors 0, 1) | 6 | 3 | 750,000 | 28% | 0.0 | **no** - trim on the boundary |
-| 2 out - opposite (motors 0, 6) | 6 | 3 | 862,500 | 33% | 35.4 | yes |
+| nominal (8 motors) | 8 | 3 | 2,650,000 | 100% | 60.5 | yes |
+| 1 out - outer (motor 0) | 7 | 3 | 1,568,750 | 59% | 26.9 | yes |
+| 1 out - inner (motor 1) | 7 | 3 | 1,743,750 | 66% | 26.9 | yes |
+| 2 out - adjacent (motors 0, 1) | 6 | 3 | 750,000 | 28% | -7.2 | **no** - trim outside the set |
+| 2 out - opposite (motors 0, 6) | 6 | 3 | 862,500 | 33% | 26.9 | yes |
 | 4 out - one r_z row (motors 0-3) | 4 | 2 | 0 | 0% | 0.0 | **no** - rank 2, axes coupled |
 
-The geometry tells a clear story. Losing an **outer** arm costs more authority than an **inner** one. Losing an **adjacent** pair drops the hover trim exactly onto the boundary -- the vehicle can still hold hover but has no margin to correct in some direction -- while losing an **opposite** pair keeps a healthy margin. Losing a whole $r_z$ row leaves the pitch-torque and thrust rows identical, so the allocation matrix falls to rank 2 and those axes can no longer be commanded independently: the attainable set collapses to a flat, zero-volume sheet.
+The geometry tells a clear story. Losing an **outer** arm costs more authority than an **inner** one. Losing an **adjacent** pair pushes the hover trim outside the shrunken attainable set, while losing an **opposite** pair keeps a healthy margin. Losing a whole $r_z$ row leaves the pitch-torque and thrust rows as scalar multiples of one another, so the allocation matrix falls to rank 2 and those axes can no longer be commanded independently: the attainable set collapses to a flat, zero-volume sheet.
 
 A 3-D attainable command set is drawn for each scenario, all to the same scale so the shrinkage is visible:
 
@@ -155,3 +158,16 @@ A 3-D attainable command set is drawn for each scenario, all to the same scale s
 <td align="center"><img src="diagrams/scenario_row_out.png" width="100%"><br><sub>4 out - one r_z row (motors 0-3)</sub></td>
 </tr>
 </table>
+
+
+## What this approach adds to the story
+
+The first approach made the physics visible by grouping motors into quadrants.
+The second approach removed that hand grouping and let a per-motor matrix handle
+redundancy and motor-out cases. This third approach adds the missing hardware
+boundary: every answer must live inside the motors' attainable command set.
+
+That changes the allocator's job. It no longer returns an unconstrained command
+and hopes a later clamp is good enough. It returns the best feasible command,
+reports saturation explicitly, and gives a geometric way to explain why one
+failure case is still controllable while another has lost margin or rank.

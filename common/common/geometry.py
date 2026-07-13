@@ -4,7 +4,7 @@ N_MOTORS = 8
 
 # Motor positions used by the rigid-body simulator model.
 MOTOR_R_Y = (-1.5, -0.8, 1.5, 0.8, -1.5, -0.8, 1.5, 0.8)
-MOTOR_R_Z = (-1, -1, -1, -1, 1, 1, 1, 1)
+MOTOR_R_Z = (-0.9, -0.9, -0.9, -0.9, 1.1, 1.1, 1.1, 1.1)
 
 
 def _average_motor_pair(values, first_motor):

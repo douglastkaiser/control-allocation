@@ -1,4 +1,4 @@
-"""Generate approach three's README and its polytope diagrams.
+"""Generate approach three's README and reference polytope diagram paths.
 
 Everything numeric in the README -- the allocation matrix, the attainable-set
 volumes, the controllability verdicts, and every allocated command -- is computed
@@ -6,8 +6,9 @@ here from the same ``approachthree.model`` code that runs at allocation time and
 from the shared symbolic model in ``common``. The prose is the only hand-written
 part.
 
-The diagrams are written as PNGs under ``diagrams/`` so the pull request stays
-small; a ``.gitignore`` negation keeps just those files tracked.
+Existing PNG diagrams under ``diagrams/`` are reused instead of overwritten so
+documentation-only or numeric-only changes do not create binary churn in pull
+requests.
 """
 
 import os
@@ -152,6 +153,10 @@ def _style_3d(ax, title):
 
 def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
     """Render the 3-D attainable command set for one scenario to a PNG."""
+    path = os.path.join(DIAGRAMS, scenario["slug"] + ".png")
+    if os.path.exists(path):
+        return path
+
     faces = attainable_set_faces(scenario["mask"])
     fig = plt.figure(figsize=(6.0, 5.2))
     ax = fig.add_subplot(111, projection="3d")
@@ -207,7 +212,6 @@ def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
         labelcolor=INK,
     )
 
-    path = os.path.join(DIAGRAMS, scenario["slug"] + ".png")
     fig.savefig(path, format="png", dpi=110, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
 
@@ -326,6 +330,8 @@ def verdict_text(verdict):
     """Turn a controllability dict into a short human verdict."""
     if verdict["rank"] < 3:
         return f"**no** - rank {verdict['rank']}, axes coupled"
+    if verdict["margin"] < -1e-6:
+        return "**no** - trim outside the set"
     if verdict["margin"] <= 1e-6:
         return "**no** - trim on the boundary"
     return "yes"
@@ -378,13 +384,16 @@ commanded torque.
 
 Approach three keeps the exact same command interface -- pitch torque, yaw
 torque and total thrust -- but makes the per-motor **saturation limits** part of
-the problem. The set of commands the motors can actually deliver is a **polytope**
-in the three-axis command space, and allocation becomes a small **quadratic
-program (QP)** that projects the desired command onto that polytope. A request
-inside the polytope is delivered exactly; a request outside it is met by the
-closest command the motors can produce. Because the polytope is an explicit
-object we can also ask whether the vehicle is still **controllable** after one or
-more motors fail.
+the problem. This is the point where allocation stops being only an algebraic
+inverse and becomes a question about the set of commands the hardware can
+actually produce.
+
+That set is a **polytope** in the three-axis command space, and allocation
+becomes a small **quadratic program (QP)** that projects the desired command onto
+that polytope. A request inside the polytope is delivered exactly; a request
+outside it is met by the closest command the motors can produce. Because the
+polytope is an explicit object we can also ask whether the vehicle is still
+**controllable** after one or more motors fail.
 
 ## Building blocks
 
@@ -556,16 +565,30 @@ for result in results:
 
 readme += (
     "\nThe geometry tells a clear story. Losing an **outer** arm costs more "
-    "authority than an **inner** one. Losing an **adjacent** pair drops the hover "
-    "trim exactly onto the boundary -- the vehicle can still hold hover but has "
-    "no margin to correct in some direction -- while losing an **opposite** pair "
+    "authority than an **inner** one. Losing an **adjacent** pair pushes the hover "
+    "trim outside the shrunken attainable set, while losing an **opposite** pair "
     "keeps a healthy margin. Losing a whole $r_z$ row leaves the pitch-torque and "
-    "thrust rows identical, so the allocation matrix falls to rank 2 and those "
-    "axes can no longer be commanded independently: the attainable set collapses "
-    "to a flat, zero-volume sheet.\n\n"
+    "thrust rows as scalar multiples of one another, so the allocation matrix "
+    "falls to rank 2 and those axes can no longer be commanded independently: "
+    "the attainable set collapses to a flat, zero-volume sheet.\n\n"
 )
 readme += "A 3-D attainable command set is drawn for each scenario, all to the same scale so the shrinkage is visible:\n\n"
 readme += diagram_grid(failure_results)
+
+readme += """
+
+## What this approach adds to the story
+
+The first approach made the physics visible by grouping motors into quadrants.
+The second approach removed that hand grouping and let a per-motor matrix handle
+redundancy and motor-out cases. This third approach adds the missing hardware
+boundary: every answer must live inside the motors' attainable command set.
+
+That changes the allocator's job. It no longer returns an unconstrained command
+and hopes a later clamp is good enough. It returns the best feasible command,
+reports saturation explicitly, and gives a geometric way to explain why one
+failure case is still controllable while another has lost margin or rank.
+"""
 
 with open("README.md", "w") as f:
     f.write(readme)

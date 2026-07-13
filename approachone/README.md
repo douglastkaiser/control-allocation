@@ -3,11 +3,18 @@
 
 
 This approach is intentionally simple: it groups the eight motors into four
-quadrants instead of allocating against each motor independently. The controller
-asks for pitch torque, yaw torque, and total thrust; the allocator turns each
-command into rotor-speed contributions and sums those commanded rotor speeds per
-quadrant. The simulator still applies the per-motor geometry to predict the
-resulting rates and airspeed.
+quadrants instead of allocating against each motor independently. That is the
+first useful approximation because it makes the mapping from pitch torque, yaw
+torque, and total thrust to motor commands easy to inspect by hand. The allocator
+turns each command into rotor-speed contributions and sums those commanded rotor
+speeds per quadrant, while the simulator still applies the per-motor geometry to
+predict the resulting rates and airspeed.
+
+The tradeoff is that the allocator has deliberately hidden some reality. Paired
+motors are treated as one actuator group, so individual motor authority,
+asymmetric limits, and motor failures are not first-class concepts yet. That is
+why approach two removes the quadrant shortcut and exposes every motor as its own
+allocation variable.
 
 ## Building blocks
 
@@ -53,11 +60,14 @@ T = f_{0} + f_{1} + f_{2} + f_{3} + f_{4} + f_{5} + f_{6} + f_{7}
 
 ## Allocation flow
 
-The allocator starts with equal thrust per motor for the requested total thrust,
-then adds signed speed deltas for pitch and yaw torque by quadrant. Each
-quadrant arm is the average position of its two motors. Shared quadrant geometry
-constants are substituted during generation so runtime callers only pass the
-three commands and `C`.
+The allocator starts by splitting thrust between the negative-`r_z` and
+positive-`r_z` motor rows so a pure thrust request does not accidentally create a
+pitch torque. It then adds signed speed deltas for yaw torque by quadrant. Each
+quadrant arm is the average position of its two motors. This is a design choice:
+it makes the first allocator small and readable, but it assumes the two motors in
+a quadrant can be commanded as a pair. Shared quadrant geometry constants are
+substituted during generation so runtime callers only pass the three commands
+and `C`.
 ```python
 w = allocated_motor_speeds(tau_y, tau_z, thrust, C, r_quadrant_y, r_quadrant_z)
 # gen_allocate.py substitutes ALLOCATION_R_QUADRANT_Y/Z before writing allocate.py.
@@ -69,8 +79,19 @@ After substituting the current approach-one motor geometry, the compact vector
 math expands into concrete linear combinations of motor thrusts. These expanded
 forms are what the generated simulator ultimately evaluates.
 ```math
-\tau_{y} = - f_{0} - f_{1} - f_{2} - f_{3} + f_{4} + f_{5} + f_{6} + f_{7}
+\tau_{y} = - 0.9 f_{0} - 0.9 f_{1} - 0.9 f_{2} - 0.9 f_{3} + 1.1 f_{4} + 1.1 f_{5} + 1.1 f_{6} + 1.1 f_{7}
 ```
 ```math
 \tau_{z} = 1.5 f_{0} + 0.8 f_{1} - 1.5 f_{2} - 0.8 f_{3} + 1.5 f_{4} + 0.8 f_{5} - 1.5 f_{6} - 0.8 f_{7}
 ```
+
+## Why this is not enough
+
+This version is valuable because every step is visible: thrust and pitch are
+balanced across the two `r_z` rows, yaw adds signed quadrant corrections, and the
+simulator shows the resulting motion. But the simplicity comes from a hand
+grouping that throws away per-motor freedom. It cannot naturally ask what
+happens when one motor fails, whether one motor should work harder than its
+neighbor, or whether a redundant set of motors is being used optimally. Approach
+two keeps the same command interface but replaces the quadrant rule with a
+geometry-derived matrix that has one column per motor.

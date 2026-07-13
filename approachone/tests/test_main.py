@@ -6,6 +6,10 @@ from approachone.sim import sim
 
 C = 1
 DT = 0.01
+BALANCED_HOVER_SPEEDS = (
+    *((13.75**0.5,) * 4),
+    *((11.25**0.5,) * 4),
+)
 
 
 def run_control_allocate_sim(x, x_cmd, gains):
@@ -35,7 +39,7 @@ def test_control_allocate_sim_round_trip_is_self_consistent():
     u, motor_speeds, x_next = run_control_allocate_sim(x, x_cmd, gains)
 
     assert u == [0, 0, 100]
-    assert motor_speeds == pytest.approx(((100 / 8) ** 0.5,) * 8)
+    assert motor_speeds == pytest.approx(BALANCED_HOVER_SPEEDS)
     assert x_next == pytest.approx((0, 0, 10))
 
     u_next = [

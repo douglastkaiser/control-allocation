@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from common import utils
-from approachtwo.model import allocated_motor_speeds
+from approachtwo.allocate import allocated_motor_speeds
 from approachtwo.sim import sim
 
 
