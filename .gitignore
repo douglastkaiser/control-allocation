@@ -1,3 +1,7 @@
 *.png
 *__pycache__
 *.egg-info
+
+# Generated approach-three polytope diagrams are committed so the README renders.
+!approachthree/diagrams/
+!approachthree/diagrams/*.png

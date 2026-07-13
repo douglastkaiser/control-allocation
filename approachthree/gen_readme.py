@@ -1,11 +1,16 @@
 """Generate approach three's README and its polytope diagrams.
 
 Everything numeric in the README -- the allocation matrix, the attainable-set
-polygons, and every allocated command -- is computed here from the same
-``approachthree.model`` code that runs at allocation time and from the shared
-symbolic model in ``common``. The prose is the only hand-written part.
+volumes, the controllability verdicts, and every allocated command -- is computed
+here from the same ``approachthree.model`` code that runs at allocation time and
+from the shared symbolic model in ``common``. The prose is the only hand-written
+part.
+
+The diagrams are written as PNGs under ``diagrams/`` so the pull request stays
+small; a ``.gitignore`` negation keeps just those files tracked.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,19 +21,23 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import sympy as sp  # noqa: E402
-from matplotlib.patches import Polygon as PolygonPatch  # noqa: E402
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from approachthree.model import (  # noqa: E402
     DEFAULT_REG,
     DEFAULT_S_MAX,
+    DEFAULT_TRIM,
     DEFAULT_WEIGHTS,
     achieved_command,
     allocated_motor_speeds,
     allocated_squared_speeds,
-    attainable_moment_set,
+    attainable_generators,
+    attainable_set_faces,
+    controllability,
     saturated_motors,
+    zonotope_volume,
 )
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS  # noqa: E402
 from common.model import rigid_body_motion, single_motor_torque  # noqa: E402
@@ -40,11 +49,21 @@ from common.model import rigid_body_motion, single_motor_torque  # noqa: E402
 SURFACE = "#ffffff"
 INK = "#0b0b0b"
 INK_SOFT = "#52514e"
-GRID = "#e4e3df"
-BLUE = "#2a78d6"  # nominal attainable set
-ORANGE = "#eb6834"  # degraded (motor-out) attainable set
-GREEN = "#0ca30c"  # achieved / feasible command
-RED = "#d03b3b"  # requested command that lies outside the set
+GRID = "#c9c8c3"
+BLUE = "#2a78d6"  # controllable attainable set
+ORANGE = "#eb6834"  # degraded / uncontrollable attainable set
+GREEN = "#0ca30c"  # delivered / feasible trim
+RED = "#d03b3b"  # requested-but-infeasible / lost trim
+
+DIAGRAMS = "diagrams"
+
+# Shared axis extents so every scenario diagram is drawn to the same scale and
+# the polytope is visibly seen to shrink as motors are lost.
+_LIMITS = {
+    "x": (-110, 110),
+    "y": (-125, 125),
+    "z": (0, N_MOTORS * DEFAULT_S_MAX + 10),
+}
 
 
 def math_block(expr):
@@ -106,201 +125,93 @@ def allocation_matrix_from_equations(active_motors=None):
 
 
 # ---------------------------------------------------------------------------
-# Diagram helpers. Each returns the file name it wrote.
+# 3-D polytope diagrams. Each renders one failure scenario to a PNG.
 # ---------------------------------------------------------------------------
-def _style_axes(ax, title):
-    ax.set_facecolor(SURFACE)
-    ax.set_title(title, color=INK, fontsize=13, pad=12)
-    ax.set_xlabel(r"pitch torque  $\tau_y$", color=INK_SOFT, fontsize=11)
-    ax.set_ylabel(r"yaw torque  $\tau_z$", color=INK_SOFT, fontsize=11)
-    ax.axhline(0, color=GRID, lw=1, zorder=0)
-    ax.axvline(0, color=GRID, lw=1, zorder=0)
-    ax.grid(True, color=GRID, lw=0.6, zorder=0)
-    ax.tick_params(colors=INK_SOFT, labelsize=9)
-    for spine in ax.spines.values():
-        spine.set_color(GRID)
-    ax.set_aspect("equal", adjustable="box")
-
-
-def _fill_polygon(ax, polygon, edge, face_alpha, label, lw=2.2, hatch=None):
-    patch = PolygonPatch(
-        polygon,
-        closed=True,
-        facecolor=edge,
-        edgecolor=edge,
-        alpha=face_alpha,
-        lw=0,
-        zorder=1,
-        hatch=hatch,
+def _style_3d(ax, title):
+    ax.set_title(title, color=INK, fontsize=12, pad=8)
+    ax.set_xlabel(r"pitch $\tau_y$", color=INK_SOFT, fontsize=10, labelpad=4)
+    ax.set_ylabel(r"yaw $\tau_z$", color=INK_SOFT, fontsize=10, labelpad=4)
+    ax.set_zlabel(r"thrust $T$", color=INK_SOFT, fontsize=10, labelpad=4)
+    ax.tick_params(colors=INK_SOFT, labelsize=8)
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.pane.set_facecolor(SURFACE)
+        axis.pane.set_edgecolor(GRID)
+        axis.pane.set_alpha(1.0)
+    ax.set_xlim(*_LIMITS["x"])
+    ax.set_ylim(*_LIMITS["y"])
+    ax.set_zlim(*_LIMITS["z"])
+    ax.set_box_aspect(
+        (
+            _LIMITS["x"][1] - _LIMITS["x"][0],
+            _LIMITS["y"][1] - _LIMITS["y"][0],
+            _LIMITS["z"][1] - _LIMITS["z"][0],
+        )
     )
-    ax.add_patch(patch)
-    closed = np.vstack([polygon, polygon[0]])
-    ax.plot(closed[:, 0], closed[:, 1], color=edge, lw=lw, zorder=3, label=label)
+    ax.view_init(elev=20, azim=-60)
 
 
-def _save(fig, name):
-    fig.savefig(name, format="svg", facecolor=SURFACE, bbox_inches="tight")
+def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
+    """Render the 3-D attainable command set for one scenario to a PNG."""
+    faces = attainable_set_faces(scenario["mask"])
+    fig = plt.figure(figsize=(6.0, 5.2))
+    ax = fig.add_subplot(111, projection="3d")
+
+    set_color = BLUE if verdict["controllable"] else ORANGE
+    collection = Poly3DCollection(
+        faces, facecolor=set_color, edgecolor=INK_SOFT, linewidths=0.35, alpha=0.30
+    )
+    collection.set_zsort("average")
+    ax.add_collection3d(collection)
+
+    trim_color = GREEN if verdict["controllable"] else RED
+    ax.scatter(
+        *trim,
+        color=trim_color,
+        s=45,
+        depthshade=False,
+        edgecolor=INK,
+        linewidth=0.5,
+        zorder=6,
+        label=f"hover trim {tuple(int(v) for v in trim)}",
+    )
+
+    if demo is not None:
+        requested = np.asarray(demo["requested"], dtype=float)
+        delivered = np.asarray(demo["delivered"], dtype=float)
+        ax.plot(*zip(requested, delivered), color=INK_SOFT, lw=1.4, zorder=5)
+        ax.scatter(
+            *requested,
+            color=RED,
+            marker="X",
+            s=55,
+            depthshade=False,
+            zorder=7,
+            label="requested (outside)",
+        )
+        ax.scatter(
+            *delivered,
+            color=GREEN,
+            s=40,
+            depthshade=False,
+            zorder=7,
+            label="delivered (on surface)",
+        )
+
+    _style_3d(ax, scenario["title"])
+    ax.legend(
+        loc="upper left",
+        fontsize=7.5,
+        framealpha=0.95,
+        edgecolor=GRID,
+        facecolor=SURFACE,
+        labelcolor=INK,
+    )
+
+    path = os.path.join(DIAGRAMS, scenario["slug"] + ".png")
+    fig.savefig(path, format="png", dpi=110, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
 
-    return name
-
-
-def plot_attainable_moment_set(feasible, saturating):
-    """Nominal attainable moment set with a feasible and a saturating command."""
-    polygon = attainable_moment_set()
-    fig, ax = plt.subplots(figsize=(6.4, 5.6))
-    _style_axes(ax, "Attainable moment set  (all 8 motors)")
-    _fill_polygon(ax, polygon, BLUE, 0.12, "attainable set  $\\mathcal{A}$")
-
-    # Feasible request: delivered exactly, sits inside the polytope.
-    fy, fz = feasible["command"][:2]
-    ax.plot(
-        fy,
-        fz,
-        "o",
-        color=GREEN,
-        ms=9,
-        zorder=5,
-        label="feasible request  (delivered exactly)",
-    )
-
-    # Saturating request: projected onto the boundary of the polytope.
-    ry, rz = saturating["command"][:2]
-    ay, az = saturating["achieved"][:2]
-    ax.annotate(
-        "",
-        xy=(ay, az),
-        xytext=(ry, rz),
-        arrowprops=dict(arrowstyle="-|>", color=INK_SOFT, lw=1.8, shrinkA=0, shrinkB=0),
-        zorder=4,
-    )
-    ax.plot(
-        ry,
-        rz,
-        "X",
-        color=RED,
-        ms=11,
-        zorder=5,
-        label="requested  (outside $\\mathcal{A}$)",
-    )
-    ax.plot(
-        ay, az, "o", color=GREEN, ms=9, zorder=6, label="delivered  (motors saturated)"
-    )
-
-    ax.legend(
-        loc="upper left",
-        fontsize=8.5,
-        framealpha=0.95,
-        edgecolor=GRID,
-        facecolor=SURFACE,
-        labelcolor=INK,
-    )
-    ax.margins(0.16)
-
-    return _save(fig, "attainable_moment_set.svg")
-
-
-def plot_motor_out(request):
-    """Nominal vs motor-0-out moment sets, with a command lost to the failure."""
-    nominal = attainable_moment_set()
-    degraded = attainable_moment_set([0, 1, 1, 1, 1, 1, 1, 1])
-    fig, ax = plt.subplots(figsize=(6.4, 5.6))
-    _style_axes(ax, "Motor 0 lost:  the attainable set shrinks")
-    _fill_polygon(ax, nominal, BLUE, 0.10, "nominal set  (8 motors)", lw=1.8)
-    _fill_polygon(
-        ax, degraded, ORANGE, 0.16, "motor-out set  (7 motors)", lw=2.2, hatch="///"
-    )
-
-    ry, rz = request["command"][:2]
-    ay, az = request["achieved"][:2]
-    ax.annotate(
-        "",
-        xy=(ay, az),
-        xytext=(ry, rz),
-        arrowprops=dict(arrowstyle="-|>", color=INK_SOFT, lw=1.8, shrinkA=0, shrinkB=0),
-        zorder=4,
-    )
-    ax.plot(
-        ry,
-        rz,
-        "X",
-        color=RED,
-        ms=11,
-        zorder=5,
-        label="request  (feasible only with 8 motors)",
-    )
-    ax.plot(ay, az, "o", color=GREEN, ms=9, zorder=6, label="delivered after failure")
-
-    ax.legend(
-        loc="upper left",
-        fontsize=8.5,
-        framealpha=0.95,
-        edgecolor=GRID,
-        facecolor=SURFACE,
-        labelcolor=INK,
-    )
-    ax.margins(0.16)
-
-    return _save(fig, "motor_out_moment_set.svg")
-
-
-def plot_projection_field(thrust=100.0, n_directions=24):
-    """Ring of over-large moment requests, each projected onto the polytope."""
-    polygon = attainable_moment_set()
-    radius = 1.35 * np.max(np.linalg.norm(polygon, axis=1))
-    fig, ax = plt.subplots(figsize=(6.4, 5.6))
-    _style_axes(ax, "Every out-of-range request maps onto the polytope")
-    _fill_polygon(ax, polygon, BLUE, 0.12, "attainable set  $\\mathcal{A}$")
-
-    first = True
-    for angle in np.linspace(0, 2 * np.pi, n_directions, endpoint=False):
-        req = (radius * np.cos(angle), radius * np.sin(angle), thrust)
-        ach = achieved_command(req)
-        ax.annotate(
-            "",
-            xy=(ach[0], ach[1]),
-            xytext=(req[0], req[1]),
-            arrowprops=dict(
-                arrowstyle="-|>",
-                color=INK_SOFT,
-                lw=1.0,
-                alpha=0.65,
-                shrinkA=0,
-                shrinkB=0,
-            ),
-            zorder=2,
-        )
-        ax.plot(
-            req[0],
-            req[1],
-            "X",
-            color=RED,
-            ms=6,
-            zorder=3,
-            label="requested" if first else None,
-        )
-        ax.plot(
-            ach[0],
-            ach[1],
-            "o",
-            color=GREEN,
-            ms=5,
-            zorder=4,
-            label="delivered" if first else None,
-        )
-        first = False
-
-    ax.legend(
-        loc="upper left",
-        fontsize=8.5,
-        framealpha=0.95,
-        edgecolor=GRID,
-        facecolor=SURFACE,
-        labelcolor=INK,
-    )
-    ax.margins(0.06)
-
-    return _save(fig, "saturation_projection.svg")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -319,18 +230,70 @@ def study(command, motors_active=None):
     }
 
 
+def mask(failed):
+    """Return an eight-motor active mask with ``failed`` indices disabled."""
+    return [0 if motor in failed else 1 for motor in range(N_MOTORS)]
+
+
 hover = study((0, 0, 100))
 feasible = study((-40, 40, 100))
 saturating = study((80, 100, 100))
 aggressive = study((0, 150, 100))
-motor_out = study((0, 70, 100), [0, 1, 1, 1, 1, 1, 1, 1])
 
-nominal_polygon = attainable_moment_set()
-motor_out_polygon = attainable_moment_set([0, 1, 1, 1, 1, 1, 1, 1])
+# The failure scenarios documented in the controllability study. The nominal
+# case carries the saturation demo; the rest illustrate how losing motors
+# reshapes the attainable set.
+SCENARIOS = [
+    {
+        "label": "nominal (8 motors)",
+        "title": "Nominal: all 8 motors",
+        "slug": "scenario_nominal",
+        "mask": mask([]),
+        "demo": {
+            "requested": saturating["command"],
+            "delivered": tuple(saturating["achieved"]),
+        },
+    },
+    {
+        "label": "1 out - outer (motor 0)",
+        "title": "1 motor out: outer arm (motor 0)",
+        "slug": "scenario_outer_single",
+        "mask": mask([0]),
+    },
+    {
+        "label": "1 out - inner (motor 1)",
+        "title": "1 motor out: inner arm (motor 1)",
+        "slug": "scenario_inner_single",
+        "mask": mask([1]),
+    },
+    {
+        "label": "2 out - adjacent (motors 0, 1)",
+        "title": "2 motors out: adjacent pair (0, 1)",
+        "slug": "scenario_adjacent_pair",
+        "mask": mask([0, 1]),
+    },
+    {
+        "label": "2 out - opposite (motors 0, 6)",
+        "title": "2 motors out: opposite pair (0, 6)",
+        "slug": "scenario_opposite_pair",
+        "mask": mask([0, 6]),
+    },
+    {
+        "label": "4 out - one r_z row (motors 0-3)",
+        "title": "4 motors out: an entire r_z row (0-3)",
+        "slug": "scenario_row_out",
+        "mask": mask([0, 1, 2, 3]),
+    },
+]
 
-set_figure = plot_attainable_moment_set(feasible, saturating)
-motor_out_figure = plot_motor_out(motor_out)
-projection_figure = plot_projection_field()
+os.makedirs(DIAGRAMS, exist_ok=True)
+NOMINAL_VOLUME = zonotope_volume(attainable_generators())
+
+results = []
+for scenario in SCENARIOS:
+    verdict = controllability(scenario["mask"])
+    figure = plot_scenario_3d(scenario, verdict, demo=scenario.get("demo"))
+    results.append({"scenario": scenario, "verdict": verdict, "figure": figure})
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +301,6 @@ projection_figure = plot_projection_field()
 # ---------------------------------------------------------------------------
 _, _, tau_i = single_motor_torque()
 A = allocation_matrix_from_equations()
-motor_out_A = allocation_matrix_from_equations([0, 1, 1, 1, 1, 1, 1, 1])
 
 A_sym = sp.MatrixSymbol("A", 3, N_MOTORS)
 s_sym = sp.MatrixSymbol("s", N_MOTORS, 1)
@@ -359,6 +321,48 @@ def command_row(label, result):
     )
 
 
+def verdict_text(verdict):
+    """Turn a controllability dict into a short human verdict."""
+    if verdict["rank"] < 3:
+        return f"**no** - rank {verdict['rank']}, axes coupled"
+    if verdict["margin"] <= 1e-6:
+        return "**no** - trim on the boundary"
+    return "yes"
+
+
+def controllability_row(result):
+    """Render one scenario's controllability metrics as a Markdown table row."""
+    scenario = result["scenario"]
+    verdict = result["verdict"]
+    share = 100 * verdict["volume"] / NOMINAL_VOLUME
+
+    return (
+        f"| {scenario['label']} | {verdict['n_active']} | {verdict['rank']} | "
+        f"{verdict['volume']:,.0f} | {share:.0f}% | {verdict['margin']:.1f} | "
+        f"{verdict_text(verdict)} |\n"
+    )
+
+
+def diagram_grid(entries, columns=2):
+    """Lay diagrams out in an HTML grid so the README stays readable."""
+    html = "<table>\n"
+    for index, result in enumerate(entries):
+        if index % columns == 0:
+            html += "<tr>\n"
+        html += (
+            f'<td align="center"><img src="{result["figure"]}" width="100%"><br>'
+            f"<sub>{result['scenario']['label']}</sub></td>\n"
+        )
+        if index % columns == columns - 1 or index == len(entries) - 1:
+            html += "</tr>\n"
+
+    return html + "</table>\n"
+
+
+nominal_result = results[0]
+failure_results = results[1:]
+
+
 # ---------------------------------------------------------------------------
 # Assemble the README.
 # ---------------------------------------------------------------------------
@@ -373,11 +377,13 @@ commanded torque.
 
 Approach three keeps the exact same command interface -- pitch torque, yaw
 torque and total thrust -- but makes the per-motor **saturation limits** part of
-the problem. The set of commands the motors can actually deliver is a **polytope**,
-and allocation becomes a small **quadratic program (QP)** that projects the
-desired command onto that polytope. A request inside the polytope is delivered
-exactly; a request outside it is met by the closest command the motors can
-produce.
+the problem. The set of commands the motors can actually deliver is a **polytope**
+in the three-axis command space, and allocation becomes a small **quadratic
+program (QP)** that projects the desired command onto that polytope. A request
+inside the polytope is delivered exactly; a request outside it is met by the
+closest command the motors can produce. Because the polytope is an explicit
+object we can also ask whether the vehicle is still **controllable** after one or
+more motors fail.
 
 ## Building blocks
 
@@ -412,26 +418,21 @@ readme += (
     "That box is a set in 8-D squared-speed space. Its image under the "
     "allocation matrix is the set of every command the motors can actually "
     "produce -- the **attainable command set**. Because a linear image of a box "
-    "is a zonotope, this set is a bounded convex polytope:\n"
+    "is a zonotope, this set is a bounded convex polytope living in the full "
+    "$(\\tau_y, \\tau_z, T)$ command space:\n"
 )
 readme += latex_block(
-    r"\mathcal{A} = \{\, A\,s \;:\; 0 \le s \le s_{\max} \,\} \subset "
-    r"\mathbb{R}^3"
+    r"\mathcal{A} = \{\, A\,s \;:\; 0 \le s \le s_{\max} \,\} \subset \mathbb{R}^3"
 )
 readme += (
-    "Projected onto the pitch/yaw torque plane it is the polygon below (its "
-    "boundary is traced by the motors sitting on their limits). The vertices "
-    "are computed by `approachthree.model.attainable_moment_set`, the same code "
-    "the allocator trusts:\n"
+    "Its faces and volume are computed straight from the motor generators "
+    "``g_k = s_max * A[:, k]`` by `approachthree.model`, the same code the "
+    f"allocator trusts. With all eight motors it has {len(attainable_set_faces())} "
+    f"faces and a volume of {NOMINAL_VOLUME:,.0f}. The green point is the hover "
+    "trim; the red request below sits outside the set, so the allocator delivers "
+    "the nearest point on the surface with motors driven to saturation:\n"
 )
-readme += numeric_matrix_block(nominal_polygon, decimals=1)
-readme += f"\n![Attainable moment set]({set_figure})\n\n"
-readme += (
-    "The green request sits inside the polytope and is delivered exactly. The "
-    "red request lies outside it -- no combination of motor speeds can produce "
-    "that much torque -- so the allocator delivers the nearest point on the "
-    "boundary instead, with several motors driven to saturation.\n"
-)
+readme += f"\n![Nominal attainable command set]({nominal_result['figure']})\n\n"
 
 readme += """
 ## Allocation is a quadratic program
@@ -512,31 +513,52 @@ readme += (
 readme += numeric_matrix_block(
     np.array(saturating["squared_speeds"]).reshape(N_MOTORS, 1)
 )
-readme += "The projection is not special to one direction. Every over-range request maps onto the polytope boundary:\n"
-readme += f"\n![Saturation projection field]({projection_figure})\n\n"
 
 readme += """
-## Motor-out example
+## Controllability under motor failure
 
 Losing a motor removes its column from the allocation matrix, which shrinks the
-attainable polytope. A command that was comfortably feasible with eight motors
-can fall outside the degraded set, and the same QP handles it without any
-special-casing -- it simply projects onto the smaller polytope.
+attainable polytope. Because the polytope is explicit, each failure can be
+scored for controllability about the hover trim on three criteria:
+
+- **rank** of the active allocation matrix -- all three command axes can be
+  actuated independently only when it is 3;
+- **volume** of the attainable set -- overall command authority, reported
+  relative to the nominal set;
+- **hover margin** -- the signed distance from the hover trim to the nearest
+  face of the polytope, using the zonotope support function. A positive margin
+  means the vehicle can still make a restoring command in every direction.
 """
-readme += "The motor-out allocation matrix (motor 0 disabled) is:\n"
-readme += math_block(sp.Eq(A_sym, motor_out_A))
-readme += "and the attainable moment polygon collapses to:\n"
-readme += numeric_matrix_block(motor_out_polygon, decimals=1)
-readme += f"\n![Motor-out attainable set]({motor_out_figure})\n\n"
-cy, cz, ct = motor_out["command"]
-ay, az, at = (round(float(value), 2) for value in motor_out["achieved"])
-readme += (
-    f"With all eight motors the command ``({cy}, {cz}, {ct})`` is delivered "
-    f"exactly. After motor 0 fails it lies outside the degraded polytope, so "
-    f"the allocator delivers the closest feasible command ``({ay}, {az}, "
-    f"{at})`` with the surviving seven motors and reports "
-    f"``{motor_out['saturated']}`` of ``{N_MOTORS}`` motors on a limit.\n"
+readme += latex_block(
+    r"\text{margin} = \min_{n}\Big( h_{\mathcal{A}}(n) - n^{\top} u_{\text{trim}} "
+    r"\Big), \qquad h_{\mathcal{A}}(n) = \sum_k \max\!\big(0,\ n^{\top} g_k\big)"
 )
+readme += (
+    f"The hover trim used here is "
+    f"$({DEFAULT_TRIM[0]:g}, {DEFAULT_TRIM[1]:g}, {DEFAULT_TRIM[2]:g})$. "
+    "Every row is produced by `approachthree.model.controllability`:\n"
+)
+readme += "\n"
+readme += (
+    "| scenario | motors | rank | attainable volume | vs nominal | "
+    "hover margin | controllable |\n"
+)
+readme += "| --- | --- | --- | --- | --- | --- | --- |\n"
+for result in results:
+    readme += controllability_row(result)
+
+readme += (
+    "\nThe geometry tells a clear story. Losing an **outer** arm costs more "
+    "authority than an **inner** one. Losing an **adjacent** pair drops the hover "
+    "trim exactly onto the boundary -- the vehicle can still hold hover but has "
+    "no margin to correct in some direction -- while losing an **opposite** pair "
+    "keeps a healthy margin. Losing a whole $r_z$ row leaves the pitch-torque and "
+    "thrust rows identical, so the allocation matrix falls to rank 2 and those "
+    "axes can no longer be commanded independently: the attainable set collapses "
+    "to a flat, zero-volume sheet.\n\n"
+)
+readme += "A 3-D attainable command set is drawn for each scenario, all to the same scale so the shrinkage is visible:\n\n"
+readme += diagram_grid(failure_results)
 
 with open("README.md", "w") as f:
     f.write(readme)

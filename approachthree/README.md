@@ -10,11 +10,13 @@ commanded torque.
 
 Approach three keeps the exact same command interface -- pitch torque, yaw
 torque and total thrust -- but makes the per-motor **saturation limits** part of
-the problem. The set of commands the motors can actually deliver is a **polytope**,
-and allocation becomes a small **quadratic program (QP)** that projects the
-desired command onto that polytope. A request inside the polytope is delivered
-exactly; a request outside it is met by the closest command the motors can
-produce.
+the problem. The set of commands the motors can actually deliver is a **polytope**
+in the three-axis command space, and allocation becomes a small **quadratic
+program (QP)** that projects the desired command onto that polytope. A request
+inside the polytope is delivered exactly; a request outside it is met by the
+closest command the motors can produce. Because the polytope is an explicit
+object we can also ask whether the vehicle is still **controllable** after one or
+more motors fail.
 
 ## Building blocks
 
@@ -43,18 +45,14 @@ squared speed is boxed:
 ```math
 0 \le s_i \le s_{\max}, \qquad s_{\max} = 25
 ```
-That box is a set in 8-D squared-speed space. Its image under the allocation matrix is the set of every command the motors can actually produce -- the **attainable command set**. Because a linear image of a box is a zonotope, this set is a bounded convex polytope:
+That box is a set in 8-D squared-speed space. Its image under the allocation matrix is the set of every command the motors can actually produce -- the **attainable command set**. Because a linear image of a box is a zonotope, this set is a bounded convex polytope living in the full $(\tau_y, \tau_z, T)$ command space:
 ```math
 \mathcal{A} = \{\, A\,s \;:\; 0 \le s \le s_{\max} \,\} \subset \mathbb{R}^3
 ```
-Projected onto the pitch/yaw torque plane it is the polygon below (its boundary is traced by the motors sitting on their limits). The vertices are computed by `approachthree.model.attainable_moment_set`, the same code the allocator trusts:
-```math
-\left[\begin{matrix}-100.0 & 0.0\\-50.0 & -75.0\\0.0 & -115.0\\50.0 & -75.0\\100.0 & 0.0\\50.0 & 75.0\\0.0 & 115.0\\-50.0 & 75.0\end{matrix}\right]
-```
+Its faces and volume are computed straight from the motor generators ``g_k = s_max * A[:, k]`` by `approachthree.model`, the same code the allocator trusts. With all eight motors it has 36 faces and a volume of 2,650,000. The green point is the hover trim; the red request below sits outside the set, so the allocator delivers the nearest point on the surface with motors driven to saturation:
 
-![Attainable moment set](attainable_moment_set.svg)
+![Nominal attainable command set](diagrams/scenario_nominal.png)
 
-The green request sits inside the polytope and is delivered exactly. The red request lies outside it -- no combination of motor speeds can produce that much torque -- so the allocator delivers the nearest point on the boundary instead, with several motors driven to saturation.
 
 ## Allocation is a quadratic program
 
@@ -109,26 +107,48 @@ For the over-range combined command the QP still returns a fully feasible square
 ```math
 \left[\begin{matrix}25.0\\0.0\\0.0\\0.0\\25.0\\25.0\\0.0\\25.0\end{matrix}\right]
 ```
-The projection is not special to one direction. Every over-range request maps onto the polytope boundary:
 
-![Saturation projection field](saturation_projection.svg)
-
-
-## Motor-out example
+## Controllability under motor failure
 
 Losing a motor removes its column from the allocation matrix, which shrinks the
-attainable polytope. A command that was comfortably feasible with eight motors
-can fall outside the degraded set, and the same QP handles it without any
-special-casing -- it simply projects onto the smaller polytope.
-The motor-out allocation matrix (motor 0 disabled) is:
-```math
-A = \left[\begin{matrix}0 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
-```
-and the attainable moment polygon collapses to:
-```math
-\left[\begin{matrix}-75.0 & -37.5\\-50.0 & -75.0\\0.0 & -115.0\\50.0 & -75.0\\100.0 & 0.0\\75.0 & 37.5\\25.0 & 77.5\\-25.0 & 37.5\end{matrix}\right]
-```
+attainable polytope. Because the polytope is explicit, each failure can be
+scored for controllability about the hover trim on three criteria:
 
-![Motor-out attainable set](motor_out_moment_set.svg)
+- **rank** of the active allocation matrix -- all three command axes can be
+  actuated independently only when it is 3;
+- **volume** of the attainable set -- overall command authority, reported
+  relative to the nominal set;
+- **hover margin** -- the signed distance from the hover trim to the nearest
+  face of the polytope, using the zonotope support function. A positive margin
+  means the vehicle can still make a restoring command in every direction.
+```math
+\text{margin} = \min_{n}\Big( h_{\mathcal{A}}(n) - n^{\top} u_{\text{trim}} \Big), \qquad h_{\mathcal{A}}(n) = \sum_k \max\!\big(0,\ n^{\top} g_k\big)
+```
+The hover trim used here is $(0, 0, 100)$. Every row is produced by `approachthree.model.controllability`:
 
-With all eight motors the command ``(0, 70, 100)`` is delivered exactly. After motor 0 fails it lies outside the degraded polytope, so the allocator delivers the closest feasible command ``(5.75, 62.1, 94.25)`` with the surviving seven motors and reports ``7`` of ``8`` motors on a limit.
+| scenario | motors | rank | attainable volume | vs nominal | hover margin | controllable |
+| --- | --- | --- | --- | --- | --- | --- |
+| nominal (8 motors) | 8 | 3 | 2,650,000 | 100% | 70.7 | yes |
+| 1 out - outer (motor 0) | 7 | 3 | 1,568,750 | 59% | 35.4 | yes |
+| 1 out - inner (motor 1) | 7 | 3 | 1,743,750 | 66% | 35.4 | yes |
+| 2 out - adjacent (motors 0, 1) | 6 | 3 | 750,000 | 28% | 0.0 | **no** - trim on the boundary |
+| 2 out - opposite (motors 0, 6) | 6 | 3 | 862,500 | 33% | 35.4 | yes |
+| 4 out - one r_z row (motors 0-3) | 4 | 2 | 0 | 0% | 0.0 | **no** - rank 2, axes coupled |
+
+The geometry tells a clear story. Losing an **outer** arm costs more authority than an **inner** one. Losing an **adjacent** pair drops the hover trim exactly onto the boundary -- the vehicle can still hold hover but has no margin to correct in some direction -- while losing an **opposite** pair keeps a healthy margin. Losing a whole $r_z$ row leaves the pitch-torque and thrust rows identical, so the allocation matrix falls to rank 2 and those axes can no longer be commanded independently: the attainable set collapses to a flat, zero-volume sheet.
+
+A 3-D attainable command set is drawn for each scenario, all to the same scale so the shrinkage is visible:
+
+<table>
+<tr>
+<td align="center"><img src="diagrams/scenario_outer_single.png" width="100%"><br><sub>1 out - outer (motor 0)</sub></td>
+<td align="center"><img src="diagrams/scenario_inner_single.png" width="100%"><br><sub>1 out - inner (motor 1)</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="diagrams/scenario_adjacent_pair.png" width="100%"><br><sub>2 out - adjacent (motors 0, 1)</sub></td>
+<td align="center"><img src="diagrams/scenario_opposite_pair.png" width="100%"><br><sub>2 out - opposite (motors 0, 6)</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="diagrams/scenario_row_out.png" width="100%"><br><sub>4 out - one r_z row (motors 0-3)</sub></td>
+</tr>
+</table>

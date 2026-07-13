@@ -16,6 +16,7 @@ from approachthree.model import (
     achieved_command,
     allocated_motor_speeds,
     allocated_squared_speeds,
+    controllability,
     saturated_motors,
 )
 from approachthree.sim import sim
@@ -42,6 +43,13 @@ def run(label, command, motors_active=None):
     )
     print(f"  motors on a limit: {on_limit} / {len(w)}  (s_max={DEFAULT_S_MAX:g})")
 
+    verdict = controllability(motors_active)
+    print(
+        f"  controllability: rank={verdict['rank']}, "
+        f"volume={verdict['volume']:.0f}, hover margin={verdict['margin']:.2f} "
+        f"-> {'controllable' if verdict['controllable'] else 'NOT controllable'}"
+    )
+
     pitch_rate, yaw_rate, u_air = sim(*w, 0, 0, 0, C, dt)
     print(f"  one sim step:   {pitch_rate=:.4f}, {yaw_rate=:.4f}, {u_air=:.4f}\n")
 
@@ -51,3 +59,6 @@ run("feasible maneuver", (-40, 40, 100))
 run("aggressive yaw (saturates)", (0, 150, 100))
 run("combined, over-range (saturates)", (80, 100, 100))
 run("motor 0 out", (0, 70, 100), [0, 1, 1, 1, 1, 1, 1, 1])
+run("adjacent pair out (0, 1)", (0, 0, 100), [0, 0, 1, 1, 1, 1, 1, 1])
+run("opposite pair out (0, 6)", (0, 0, 100), [0, 1, 1, 1, 1, 1, 0, 1])
+run("whole r_z row out (0-3)", (0, 0, 100), [0, 0, 0, 0, 1, 1, 1, 1])
