@@ -26,6 +26,11 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+from approachthree.continuous import (  # noqa: E402
+    analyze as continuous_analyze,
+    bode_channel_summary,
+    saturation_margin,
+)
 from approachthree.model import (  # noqa: E402
     DEFAULT_REG,
     DEFAULT_S_MAX,
@@ -42,7 +47,6 @@ from approachthree.model import (  # noqa: E402
 )
 from common.geometry import MOTOR_R_Y, MOTOR_R_Z, N_MOTORS  # noqa: E402
 from common.model import rigid_body_motion, single_motor_torque  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Palette (validated data-viz default palette, light surface).
@@ -88,6 +92,18 @@ def numeric_matrix_block(matrix, decimals=4):
     rounded[np.isclose(rounded, 0)] = 0
 
     return math_block(sp.Matrix(rounded))
+
+
+def markdown_matrix(matrix, row_names=None, col_names=None, precision=4):
+    rows = []
+    if col_names is not None:
+        rows.append("| " + " | ".join([""] + list(col_names)) + " |")
+        rows.append("| " + " | ".join(["---"] * (len(col_names) + 1)) + " |")
+    for i, row in enumerate(matrix):
+        label = row_names[i] if row_names is not None else str(i)
+        values = [f"{float(value):.{precision}g}" for value in row]
+        rows.append("| " + " | ".join([label] + values) + " |")
+    return "\n".join(rows) + "\n"
 
 
 def geometry_substitutions():
@@ -293,6 +309,7 @@ SCENARIOS = [
 
 os.makedirs(DIAGRAMS, exist_ok=True)
 NOMINAL_VOLUME = zonotope_volume(attainable_generators())
+continuous = continuous_analyze()
 
 results = []
 for scenario in SCENARIOS:
@@ -496,12 +513,10 @@ readme += latex_block(
     r"(Hs+c)_i \ge 0\ \text{(at } 0),\quad"
     r"(Hs+c)_i \le 0\ \text{(at } s_{\max})"
 )
-readme += code_block(
-    """
+readme += code_block("""
 s = allocated_squared_speeds(u, motors_active)   # active-set QP, box-constrained
 w = allocated_motor_speeds(u, motors_active)      # = sqrt(s), always real & feasible
-"""
-)
+""")
 
 readme += """
 ## Handling motor saturation
@@ -529,6 +544,54 @@ readme += (
 readme += numeric_matrix_block(
     np.array(saturating["squared_speeds"]).reshape(N_MOTORS, 1)
 )
+
+readme += """
+## Continuous-time analysis of the generated loop
+
+Approach three uses the same shared state-space analysis as approaches one and
+two, but the stack being linearized now includes the bound-constrained QP. Around
+hover no motor is saturated, so the local loop behaves like the requested command
+axes; away from hover, the active set can change and the allocator becomes
+piecewise linear as it projects commands onto the attainable polytope. The hover
+trim and motor speeds are:
+"""
+readme += code_block(f"""
+trim_command = {tuple(float(x) for x in continuous.trim_command)}
+trim_state = {tuple(float(x) for x in continuous.trim_state)}
+trim_motor_speeds = {tuple(round(float(x), 4) for x in continuous.motor_trim)}
+nearest_speed_bound_margin = {saturation_margin():.4f}
+""")
+readme += "The local command-to-output gain matrix is computed from the generated QP `allocate -> sim` loop.\n"
+readme += markdown_matrix(
+    continuous.command_jacobian,
+    ["pitch rate q", "yaw rate r", "airspeed u"],
+    ["tau_y", "tau_z", "T"],
+)
+readme += "\n"
+readme += "| channel | local transfer function |\n| --- | --- |\n"
+for channel, tf in bode_channel_summary(continuous):
+    readme += f"| {channel} | `{tf}` |\n"
+readme += f"""
+
+The state-space model keeps pitch and yaw as integrators and uses a first-order
+airspeed lag with the stack-derived static gain. The closed-loop eigenvalues are
+`{tuple(round(float(x.real), 4) for x in continuous.loop_eigenvalues)}`, so the
+local verdict is **{continuous.stability_verdict}**. The local controllability
+rank is `{continuous.controllability_rank}` and the observability rank is
+`{continuous.observability_rank}`.
+
+Robustness notes from the analysis:
+
+"""
+for note in continuous.robustness_notes:
+    readme += f"- {note}\n"
+readme += """
+
+The key difference from approach two is that this local linearization is not the
+whole robustness story. It is paired with the attainable-set volume and hover
+margin analysis below, which are the large-signal checks that know about motor
+bounds and failures.
+"""
 
 readme += """
 ## Controllability under motor failure
@@ -590,5 +653,5 @@ reports saturation explicitly, and gives a geometric way to explain why one
 failure case is still controllable while another has lost margin or rank.
 """
 
-with open("README.md", "w") as f:
+with open(Path(__file__).with_name("README.md"), "w") as f:
     f.write(readme)

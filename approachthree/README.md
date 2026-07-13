@@ -114,6 +114,55 @@ For the over-range combined command the QP still returns a fully feasible square
 \left[\begin{matrix}25.0\\1.3784\\0.0\\0.0\\25.0\\25.0\\0.0\\25.0\end{matrix}\right]
 ```
 
+## Continuous-time analysis of the generated loop
+
+Approach three uses the same shared state-space analysis as approaches one and
+two, but the stack being linearized now includes the bound-constrained QP. Around
+hover no motor is saturated, so the local loop behaves like the requested command
+axes; away from hover, the active set can change and the allocator becomes
+piecewise linear as it projects commands onto the attainable polytope. The hover
+trim and motor speeds are:
+```python
+trim_command = (0.0, 0.0, 100.0)
+trim_state = (0.0, 0.0, 10.0)
+trim_motor_speeds = (3.7081, 3.7081, 3.7081, 3.7081, 3.3541, 3.3541, 3.3541, 3.3541)
+nearest_speed_bound_margin = 11.2500
+```
+The local command-to-output gain matrix is computed from the generated QP `allocate -> sim` loop.
+|  | tau_y | tau_z | T |
+| --- | --- | --- | --- |
+| pitch rate q | 1 | 8.882e-11 | -4.441e-10 |
+| yaw rate r | 8.882e-11 | 1 | 8.882e-11 |
+| airspeed u | 7.105e-10 | -8.882e-11 | 0.05 |
+
+| channel | local transfer function |
+| --- | --- |
+| pitch | `1 / s` |
+| yaw | `1 / s` |
+| airspeed | `0.05 / (s + 1)` |
+
+
+The state-space model keeps pitch and yaw as integrators and uses a first-order
+airspeed lag with the stack-derived static gain. The closed-loop eigenvalues are
+`(-1.5, -1.0, -1.0)`, so the
+local verdict is **stable for the documented diagonal proportional gains**. The local controllability
+rank is `3` and the observability rank is
+`3`.
+
+Robustness notes from the analysis:
+
+- The hover trim is inside the attainable set with polytope margin 60.5.
+- The QP hover allocation is 11.25 squared-speed units away from the nearest motor bound.
+- The delivered trim command is (1.25e-09, 1.78e-15, 100) after regularisation.
+- The local Bode and state-space view applies while the active bound set is unchanged; outside that region the QP projection is piecewise linear.
+- Unlike approach two, saturation is part of the allocator, so large-signal robustness is studied with attainable-set margin rather than only this hover linearization.
+
+
+The key difference from approach two is that this local linearization is not the
+whole robustness story. It is paired with the attainable-set volume and hover
+margin analysis below, which are the large-signal checks that know about motor
+bounds and failures.
+
 ## Controllability under motor failure
 
 Losing a motor removes its column from the allocation matrix, which shrinks the
