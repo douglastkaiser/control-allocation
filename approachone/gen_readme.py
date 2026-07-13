@@ -165,6 +165,7 @@ readme += "\nFor classical Bode intuition, the diagonal channels reduce to these
 readme += "| channel | local transfer function |\n| --- | --- |\n"
 for channel, tf in bode_channel_summary(continuous):
     readme += f"| {channel} | `{tf}` |\n"
+readme += "\n![Continuous-time Bode plot](assets/continuous_bode.png)\n"
 readme += f"""
 
 The corresponding state-space plant uses the rate axes as integrators and models

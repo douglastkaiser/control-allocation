@@ -94,15 +94,17 @@ trim_motor_speeds = (3.7081, 3.7081, 3.7081, 3.7081, 3.3541, 3.3541, 3.3541, 3.3
 The local command-to-output gain matrix is computed from the generated `allocate -> sim` loop.
 |  | tau_y | tau_z | T |
 | --- | --- | --- | --- |
-| pitch rate q | 1 | 2.665e-10 | 0 |
-| yaw rate r | -1.776e-10 | 1 | -4.441e-10 |
-| airspeed u | 0 | 0 | 0.05 |
+| pitch rate q | 1 | -4.441e-10 | 0 |
+| yaw rate r | 0 | 1 | -4.441e-10 |
+| airspeed u | 0 | -8.882e-11 | 0.05 |
 
 | channel | local transfer function |
 | --- | --- |
 | pitch | `1 / s` |
 | yaw | `1 / s` |
 | airspeed | `0.05 / (s + 1)` |
+
+![Continuous-time Bode plot](assets/continuous_bode.png)
 
 
 The state-space model keeps pitch and yaw as integrators and uses a first-order

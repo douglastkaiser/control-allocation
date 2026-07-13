@@ -571,6 +571,7 @@ readme += "\n"
 readme += "| channel | local transfer function |\n| --- | --- |\n"
 for channel, tf in bode_channel_summary(continuous):
     readme += f"| {channel} | `{tf}` |\n"
+readme += "\n![Continuous-time Bode plot](assets/continuous_bode.png)\n"
 readme += f"""
 
 The state-space model keeps pitch and yaw as integrators and uses a first-order

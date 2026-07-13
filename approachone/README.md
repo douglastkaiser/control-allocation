@@ -112,6 +112,8 @@ For classical Bode intuition, the diagonal channels reduce to these local transf
 | yaw | `-6.77e+03 / s` |
 | airspeed | `0.05 / (s + 1)` |
 
+![Continuous-time Bode plot](assets/continuous_bode.png)
+
 
 The corresponding state-space plant uses the rate axes as integrators and models
 the airspeed channel as a first-order lag with the static thrust-to-airspeed gain

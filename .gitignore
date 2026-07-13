@@ -2,6 +2,12 @@
 *__pycache__
 *.egg-info
 
-# Generated approach-three polytope diagrams are committed so the README renders.
+# Generated README diagram artifacts are committed so the documentation renders.
+!approachone/assets/
+!approachone/assets/*.png
+!approachtwo/assets/
+!approachtwo/assets/*.png
+!approachthree/assets/
+!approachthree/assets/*.png
 !approachthree/diagrams/
 !approachthree/diagrams/*.png
