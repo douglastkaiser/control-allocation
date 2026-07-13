@@ -54,7 +54,7 @@ Run every `gen_*.py` script, including code, README, and diagram generators, wit
 python run_generators.py
 ```
 
-Diagram generators write ignored PNG artifacts locally (for example `assets/continuous_bode.png`) so they can be reviewed and added intentionally when needed.
+Diagram generators write README-linked PNG artifacts under each approach directory (for example `approachone/assets/continuous_bode.png`). These generated images are explicitly unignored so they are added to git with the README updates that reference them.
 
 ## Pre-commit
 

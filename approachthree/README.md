@@ -131,9 +131,9 @@ nearest_speed_bound_margin = 11.2500
 The local command-to-output gain matrix is computed from the generated QP `allocate -> sim` loop.
 |  | tau_y | tau_z | T |
 | --- | --- | --- | --- |
-| pitch rate q | 1 | 4.441e-10 | -1.776e-10 |
-| yaw rate r | 8.882e-10 | 1 | -5.329e-10 |
-| airspeed u | 6.217e-10 | 0 | 0.05 |
+| pitch rate q | 1 | 8.882e-11 | -4.441e-10 |
+| yaw rate r | 8.882e-11 | 1 | 8.882e-11 |
+| airspeed u | 7.105e-10 | -8.882e-11 | 0.05 |
 
 | channel | local transfer function |
 | --- | --- |
@@ -141,10 +141,12 @@ The local command-to-output gain matrix is computed from the generated QP `alloc
 | yaw | `1 / s` |
 | airspeed | `0.05 / (s + 1)` |
 
+![Continuous-time Bode plot](assets/continuous_bode.png)
+
 
 The state-space model keeps pitch and yaw as integrators and uses a first-order
 airspeed lag with the stack-derived static gain. The closed-loop eigenvalues are
-`(-1.0, -1.0, -1.5)`, so the
+`(-1.5, -1.0, -1.0)`, so the
 local verdict is **stable for the documented diagonal proportional gains**. The local controllability
 rank is `3` and the observability rank is
 `3`.
