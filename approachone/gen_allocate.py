@@ -9,20 +9,32 @@ from common.geometry import (
 
 def allocated_motor_speeds(tau_y, tau_z, thrust, C, r_quadrant_y, r_quadrant_z):
     """Build symbolic motor speeds from desired torque and thrust commands."""
-    thrust_per_motor = thrust / N_MOTORS
-    base_speed = sp.sqrt(sp.Max(thrust_per_motor, 0) / C)
-    w = [base_speed for _ in range(N_MOTORS)]
+    negative_r_z = r_quadrant_z[0]
+    positive_r_z = r_quadrant_z[2]
+    motors_per_row = N_MOTORS / 2
+    negative_row_thrust = (tau_y - positive_r_z * thrust) / (
+        motors_per_row * (negative_r_z - positive_r_z)
+    )
+    positive_row_thrust = (tau_y - negative_r_z * thrust) / (
+        motors_per_row * (positive_r_z - negative_r_z)
+    )
 
-    for tau, quadrant_r in ((tau_y, r_quadrant_y), (tau_z, r_quadrant_z)):
-        tau_per_quadrant = tau / 4
-        for quadrant, r in enumerate(quadrant_r):
-            quadrant_thrust = tau_per_quadrant / r
-            speed_delta = sp.sqrt(sp.Abs(quadrant_thrust) / 2 / C) * sp.sign(
-                quadrant_thrust
-            )
-            motor_index = quadrant * 2
-            w[motor_index] += speed_delta
-            w[motor_index + 1] += speed_delta
+    w = [
+        sp.sqrt(sp.Max(negative_row_thrust, 0) / C)
+        if motor_index < motors_per_row
+        else sp.sqrt(sp.Max(positive_row_thrust, 0) / C)
+        for motor_index in range(N_MOTORS)
+    ]
+
+    tau_per_quadrant = tau_z / 4
+    for quadrant, r in enumerate(r_quadrant_y):
+        quadrant_thrust = tau_per_quadrant / r
+        speed_delta = sp.sqrt(sp.Abs(quadrant_thrust) / 2 / C) * sp.sign(
+            quadrant_thrust
+        )
+        motor_index = quadrant * 2
+        w[motor_index] += speed_delta
+        w[motor_index + 1] += speed_delta
 
     return [sp.Max(wx, 0) for wx in w]
 

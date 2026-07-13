@@ -24,6 +24,12 @@ from approachthree.model import (
 from approachthree.sim import sim
 
 
+BALANCED_HOVER_SPEEDS = (
+    *((13.75**0.5,) * 4),
+    *((11.25**0.5,) * 4),
+)
+
+
 def out(*failed):
     """Eight-motor active mask with the given motor indices disabled."""
     return [0 if motor in failed else 1 for motor in range(8)]
@@ -33,12 +39,12 @@ def test_allocate_zero_control_produces_stopped_motors():
     assert allocated_motor_speeds((0, 0, 0)) == (0, 0, 0, 0, 0, 0, 0, 0)
 
 
-def test_hover_matches_equal_thrust_solution():
-    # Well inside the polytope, so the QP reproduces the min-effort hover split
+def test_hover_balances_pitch_with_asymmetric_z_arms():
+    # Well inside the polytope, so the QP reproduces the balanced hover split
     # shared by approaches one and two.
     motor_speeds = allocated_motor_speeds((0, 0, 100))
 
-    assert motor_speeds == pytest.approx(((100 / 8) ** 0.5,) * 8)
+    assert motor_speeds == pytest.approx(BALANCED_HOVER_SPEEDS, abs=1e-5)
 
 
 def test_feasible_command_is_delivered_exactly():
@@ -120,7 +126,7 @@ def test_control_allocate_sim_round_trip_is_self_consistent():
 
     x_next = sim(*motor_speeds, 0, 0, 0, 1, 0.01)
 
-    assert x_next == pytest.approx((0, 0, 10))
+    assert x_next == pytest.approx((0, 0, 10), abs=1e-6)
 
 
 def test_weights_default_prioritises_attitude_over_thrust():
@@ -157,8 +163,8 @@ def test_nominal_vehicle_is_controllable():
 
 
 def test_losing_a_row_of_motors_is_rank_deficient():
-    # Motors 4-7 all share r_z = +1, so the pitch-torque row equals the thrust
-    # row and the command axes are no longer independent.
+    # Motors 4-7 all share the same r_z, so the pitch-torque row is a scalar
+    # multiple of the thrust row and the command axes are no longer independent.
     verdict = controllability(out(0, 1, 2, 3))
 
     assert verdict["rank"] == 2
@@ -166,11 +172,11 @@ def test_losing_a_row_of_motors_is_rank_deficient():
     assert not verdict["controllable"]
 
 
-def test_adjacent_pair_loss_removes_hover_margin():
+def test_adjacent_pair_loss_puts_hover_outside_the_attainable_set():
     verdict = controllability(out(0, 1))
 
     assert verdict["rank"] == 3
-    assert verdict["margin"] == pytest.approx(0.0, abs=1e-6)
+    assert verdict["margin"] < 0
     assert not verdict["controllable"]
 
 

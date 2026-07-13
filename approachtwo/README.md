@@ -3,9 +3,14 @@
 
 
 This approach keeps the same controller inputs as approach one: pitch torque,
-yaw torque, and total thrust. Instead of grouping motors into quadrants, it
-builds a matrix with one column per motor and lets the allocation math decide
-how much squared speed each motor should carry.
+yaw torque, and total thrust. The change is that the hand-made quadrant grouping
+is gone. Instead, the allocator builds a matrix with one column per motor and
+lets the geometry decide how much squared speed each motor should carry.
+
+That is the next natural step because redundancy and failures are per-motor
+questions. Once every motor owns a column, disabling a motor is no longer a
+special allocation rule; it is just a zeroed or removed column in the same linear
+map.
 
 ## Building blocks
 
@@ -21,7 +26,7 @@ The full inertia matrix is also part of the shared model. The generators current
 ```math
 I = \left[\begin{matrix}I_{xx} & I_{xy} & I_{xz}\\I_{yx} & I_{yy} & I_{yz}\\I_{zx} & I_{zy} & I_{zz}\end{matrix}\right]
 ```
-The allocator works in squared-speed space, so the command vector is a linear matrix product.
+The allocator works in squared-speed space because the propeller model is quadratic in speed but linear in squared speed. That choice turns the command vector into a matrix product instead of a nonlinear allocation problem.
 ```math
 u = A w^{2}
 ```
@@ -37,13 +42,17 @@ A = allocation_matrix_from_equations()
 ```
 With the current shared geometry this expands to:
 ```math
-A = \left[\begin{matrix}-1 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\1.5 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\1 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
+A = \left[\begin{matrix}-0.9 & -0.9 & -0.9 & -0.9 & 1.1 & 1.1 & 1.1 & 1.1\\1.5 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\1 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
 ```
 
 ## Manual pseudoinverse
 
-We intentionally do not call `np.linalg.pinv()`. The code computes the compact
-SVD and then assembles the pseudoinverse itself:
+With more motors than commanded axes, there are many squared-speed vectors that
+can produce the same pitch, yaw, and thrust request. The pseudoinverse picks a
+least-squares answer from that redundant set. We intentionally do not call
+`np.linalg.pinv()` because this approach is meant to show the linear algebra the
+allocator is relying on: the code computes the compact SVD and then assembles
+the pseudoinverse itself.
 ```math
 A = U \Sigma V^{T}
 ```
@@ -62,30 +71,47 @@ The default damping is `1e-09`. Away from singularities this is effectively the 
 
 The allocator multiplies the manually assembled pseudoinverse by the command
 vector to get squared motor speeds, then clamps only the final square-root input
-so callers never receive imaginary speeds.
+so callers never receive imaginary speeds. That clamp is a safety guard for the
+return value, not a physical allocation constraint: it does not tell the caller
+that the requested command was outside what the motors can really deliver.
 ```python
 w_sq = pseudoinverse(A, damping) @ command
 w = tuple(math.sqrt(max(float(speed_sq), 0)) for speed_sq in w_sq.flatten())
 ```
+`gen_allocate.py` writes these runtime allocation functions into `allocate.py`; `model.py` imports that generated module so the generated allocator is the source used by the rest of approach two.
 
 ## Motor-out example
 
-To make the numbers concrete, the generator also runs a motor-out case with
-motor 0 disabled. The motor-out allocation matrix is derived from the same
-symbolic equations, then the inactive motor mask zeroes the failed motor column:
+To make the benefit of the matrix form concrete, the generator also runs a
+motor-out case with motor 0 disabled. The motor-out allocation matrix is derived
+from the same symbolic equations, then the inactive motor mask zeroes the failed
+motor column:
 ```math
-A = \left[\begin{matrix}0 & -1 & -1 & -1 & 1 & 1 & 1 & 1\\0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
+A = \left[\begin{matrix}0 & -0.9 & -0.9 & -0.9 & 1.1 & 1.1 & 1.1 & 1.1\\0 & 0.8 & -1.5 & -0.8 & 1.5 & 0.8 & -1.5 & -0.8\\0 & 1 & 1 & 1 & 1 & 1 & 1 & 1\end{matrix}\right]
 ```
 The pseudoinverse matrix below is computed from that real motor-out allocation matrix and is the actual matrix used to produce squared-speed commands. Row 0 is all zeros, so the failed motor receives no command.
 The actual `A_plus` motor-out matrix is:
 ```math
-\left[\begin{matrix}0.0 & 0.0 & 0.0\\-0.2046 & 0.1519 & 0.2046\\-0.1375 & -0.1168 & 0.1375\\-0.1579 & -0.035 & 0.1579\\0.0812 & 0.1752 & 0.1688\\0.1016 & 0.0935 & 0.1484\\0.1688 & -0.1752 & 0.0812\\0.1484 & -0.0935 & 0.1016\end{matrix}\right]
+\left[\begin{matrix}0.0 & 0.0 & 0.0\\-0.2046 & 0.1519 & 0.2251\\-0.1375 & -0.1168 & 0.1512\\-0.1579 & -0.035 & 0.1737\\0.0812 & 0.1752 & 0.1607\\0.1016 & 0.0935 & 0.1382\\0.1688 & -0.1752 & 0.0643\\0.1484 & -0.0935 & 0.0868\end{matrix}\right]
 ```
 For any command vector `u`, the allocator computes `w_sq = A_plus @ u` from this matrix and then square-roots the non-negative entries. For example, with `u = [0, 0, 100]` the squared-speed command is:
 ```math
-\left[\begin{matrix}0.0\\20.4634\\13.7461\\15.7905\\16.8808\\14.8364\\8.1192\\10.1636\end{matrix}\right]
+\left[\begin{matrix}0.0\\22.5097\\15.1207\\17.3695\\16.0689\\13.8201\\6.4311\\8.6799\end{matrix}\right]
 ```
 and the final motor-speed command is:
 ```math
-\left[\begin{matrix}0.0\\4.5236\\3.7076\\3.9737\\4.1086\\3.8518\\2.8494\\3.188\end{matrix}\right]
+\left[\begin{matrix}0.0\\4.7444\\3.8885\\4.1677\\4.0086\\3.7175\\2.536\\2.9462\end{matrix}\right]
 ```
+
+
+## Why this is not enough
+
+The matrix allocator is more general than the quadrant allocator: it uses every
+motor independently, and a motor-out case is handled by changing the active
+columns rather than writing a new control law. But it is still an unconstrained
+least-squares solution. The pseudoinverse can request negative squared speeds or
+speeds above the physical motor limit. Clamping before the square root keeps the
+returned speeds real, but it silently changes the command and hides which
+attitude or thrust target was sacrificed. Approach three makes those physical
+bounds part of the optimization problem instead of repairing the answer after
+the fact.
