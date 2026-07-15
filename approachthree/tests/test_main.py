@@ -8,6 +8,7 @@ from approachthree.model import (
     achieved_command,
     allocated_motor_speeds,
     allocated_squared_speeds,
+    allocate_with_precomputed_polytope,
     attainable_generators,
     attainable_moment_set,
     attainable_set_faces,
@@ -17,6 +18,9 @@ from approachthree.model import (
     convex_hull_2d,
     create_A,
     hover_margin,
+    precompute_polytope,
+    precompute_polytope_library,
+    select_precomputed_polytope,
     saturated_motors,
     support,
     zonotope_volume,
@@ -202,6 +206,31 @@ def test_hover_margin_positive_means_trim_is_interior():
     assert hover_margin(generators, (0, 0, 100)) > 0
     # A command far above the achievable thrust ceiling is well outside the set.
     assert hover_margin(generators, (0, 0, 10_000)) < 0
+
+
+def test_precomputed_polytope_matches_online_controllability():
+    motors_active = out(0, 6)
+    precomputed = precompute_polytope(motors_active)
+    online = controllability(motors_active)
+
+    assert precomputed.rank == online["rank"]
+    assert precomputed.volume == pytest.approx(online["volume"])
+    assert precomputed.hover_margin == pytest.approx(online["margin"])
+    assert precomputed.controllable == online["controllable"]
+
+
+def test_precomputed_library_selects_motor_out_scenario_for_allocation():
+    library = precompute_polytope_library()
+    motors_active = out(0)
+    selected = select_precomputed_polytope(library, motors_active)
+
+    s_precomputed = allocate_with_precomputed_polytope((0, 70, 100), selected)
+    s_online = allocated_squared_speeds((0, 70, 100), motors_active)
+
+    assert len(library) == 2**8
+    assert selected.mask == tuple(motors_active)
+    assert s_precomputed == pytest.approx(s_online)
+    assert s_precomputed[0] == 0
 
 
 def test_continuous_analysis_uses_bounded_qp_stack_near_hover():
