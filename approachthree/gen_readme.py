@@ -11,6 +11,7 @@ documentation-only or numeric-only changes do not create binary churn in pull
 requests.
 """
 
+import colorsys
 import os
 import sys
 from pathlib import Path
@@ -55,12 +56,16 @@ SURFACE = "#ffffff"
 INK = "#0b0b0b"
 INK_SOFT = "#52514e"
 GRID = "#c9c8c3"
-BLUE = "#2a78d6"  # controllable attainable set
-ORANGE = "#eb6834"  # degraded / uncontrollable attainable set
 GREEN = "#0ca30c"  # delivered / feasible trim
 RED = "#d03b3b"  # requested-but-infeasible / lost trim
-PURPLE = "#8056c2"  # high-vertex / compound facets
-TEAL = "#1d9a9a"  # triangle facets, when failures create them
+
+# The attainable set is a zonotope: its surface is tiled by parallelogram
+# pieces, one per pair of motor generators. To make that construction obvious
+# every piece gets its own vivid colour drawn from the full hue wheel (see
+# ``_piece_colors``), so neighbouring pieces jump between clearly different
+# colours instead of blending into one solid body.
+PIECE_ALPHA = 0.86  # opaque enough that adjacent pieces read as separate panels
+_GOLDEN = 0.6180339887498949  # golden-ratio hue stride -> maximally spread hues
 
 DIAGRAMS = "diagrams"
 
@@ -169,14 +174,64 @@ def _style_3d(ax, title):
     ax.view_init(elev=20, azim=-60)
 
 
-def _face_color(face, base_color):
-    """Color polytope facets by polygon type so mixed face shapes stand out."""
-    vertex_count = len(face)
-    if vertex_count == 3:
-        return TEAL
-    if vertex_count == 4:
-        return base_color
-    return PURPLE
+def _face_outward_normal(face, center):
+    """Unit normal of an ordered polygon face, oriented away from ``center``.
+
+    Newell's method stays stable for the polytope's mix of parallelograms and
+    large near-coplanar cap polygons, where a single edge cross product can be
+    numerically thin.
+    """
+    pts = np.asarray(face, dtype=float)
+    normal = np.zeros(3)
+    for i in range(len(pts)):
+        a, b = pts[i], pts[(i + 1) % len(pts)]
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2])
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0])
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1])
+    length = np.linalg.norm(normal)
+    if length < 1e-12:
+        return normal
+    normal = normal / length
+    if normal @ (pts.mean(axis=0) - center) < 0:
+        normal = -normal
+    return normal
+
+
+def _piece_colors(faces):
+    """Return one vivid, maximally-distinct fill colour per facet.
+
+    Each facet of the zonotope has its own outward normal. We order the facets
+    around the set -- by azimuth about the thrust axis, then height -- so
+    spatially neighbouring pieces are consecutive, then hand out hues in a
+    golden-ratio stride. Consecutive (i.e. touching) pieces therefore land far
+    apart on the colour wheel, so the surface reads as an assembly of clearly
+    different panels rather than one solid body. Every hue is fully saturated so
+    the differences are obvious even through the diagram's translucency.
+    """
+    center = np.mean(
+        np.vstack([np.asarray(face, dtype=float) for face in faces]), axis=0
+    )
+    normals = [_face_outward_normal(face, center) for face in faces]
+
+    def around_the_set(index):
+        normal = normals[index]
+        return (
+            round(float(np.arctan2(normal[1], normal[0])), 3),
+            round(float(normal[2]), 3),
+        )
+
+    order = sorted(range(len(faces)), key=around_the_set)
+
+    colors = [None] * len(faces)
+    for rank, index in enumerate(order):
+        hue = (rank * _GOLDEN) % 1.0
+        # Caps (near-vertical normals) are drawn a touch brighter so they still
+        # separate from the side panels they sit against.
+        value = 1.0 if abs(normals[index][2]) > 0.85 else 0.92
+        rgb = colorsys.hsv_to_rgb(hue, 0.9, value)
+        colors[index] = (*rgb, PIECE_ALPHA)
+
+    return colors
 
 
 def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
@@ -186,10 +241,9 @@ def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
     fig = plt.figure(figsize=(6.0, 5.2))
     ax = fig.add_subplot(111, projection="3d")
 
-    set_color = BLUE if verdict["controllable"] else ORANGE
-    face_colors = [_face_color(face, set_color) for face in faces]
+    face_colors = _piece_colors(faces)
     collection = Poly3DCollection(
-        faces, facecolors=face_colors, edgecolor=INK_SOFT, linewidths=0.35, alpha=0.34
+        faces, facecolors=face_colors, edgecolor=INK, linewidths=0.7
     )
     collection.set_zsort("average")
     ax.add_collection3d(collection)
