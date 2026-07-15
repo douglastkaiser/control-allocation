@@ -59,6 +59,8 @@ BLUE = "#2a78d6"  # controllable attainable set
 ORANGE = "#eb6834"  # degraded / uncontrollable attainable set
 GREEN = "#0ca30c"  # delivered / feasible trim
 RED = "#d03b3b"  # requested-but-infeasible / lost trim
+PURPLE = "#8056c2"  # high-vertex / compound facets
+TEAL = "#1d9a9a"  # triangle facets, when failures create them
 
 DIAGRAMS = "diagrams"
 
@@ -167,19 +169,27 @@ def _style_3d(ax, title):
     ax.view_init(elev=20, azim=-60)
 
 
+def _face_color(face, base_color):
+    """Color polytope facets by polygon type so mixed face shapes stand out."""
+    vertex_count = len(face)
+    if vertex_count == 3:
+        return TEAL
+    if vertex_count == 4:
+        return base_color
+    return PURPLE
+
+
 def plot_scenario_3d(scenario, verdict, demo=None, trim=DEFAULT_TRIM):
     """Render the 3-D attainable command set for one scenario to a PNG."""
     path = os.path.join(DIAGRAMS, scenario["slug"] + ".png")
-    if os.path.exists(path):
-        return path
-
     faces = attainable_set_faces(scenario["mask"])
     fig = plt.figure(figsize=(6.0, 5.2))
     ax = fig.add_subplot(111, projection="3d")
 
     set_color = BLUE if verdict["controllable"] else ORANGE
+    face_colors = [_face_color(face, set_color) for face in faces]
     collection = Poly3DCollection(
-        faces, facecolor=set_color, edgecolor=INK_SOFT, linewidths=0.35, alpha=0.30
+        faces, facecolors=face_colors, edgecolor=INK_SOFT, linewidths=0.35, alpha=0.34
     )
     collection.set_zsort("average")
     ax.add_collection3d(collection)
