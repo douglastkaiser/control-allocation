@@ -1,6 +1,7 @@
 """Approach three model API backed by the generated bounded-QP allocator."""
 
 import itertools
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -215,6 +216,92 @@ def attainable_set_faces(motors_active=None, C=1, s_max=DEFAULT_S_MAX, tol=1e-7)
     return faces
 
 
+@dataclass(frozen=True)
+class PrecomputedPolytope:
+    """Runtime-ready attainable-set data for one motor-out configuration.
+
+    The hard real-time path should not rediscover polytope geometry. It should
+    identify the active-motor bitmask, look up this record, and then run the
+    small box-QP using the already-selected allocation map and bounds.
+    """
+
+    mask: tuple
+    allocation_matrix: np.ndarray
+    lower: np.ndarray
+    upper: np.ndarray
+    generators: np.ndarray
+    faces: tuple
+    rank: int
+    volume: float
+    hover_margin: float
+    controllable: bool
+
+
+def _normalise_mask(motors_active=None):
+    """Return a hashable eight-motor mask suitable for library lookup."""
+    if motors_active is None:
+        motors_active = (1,) * N_MOTORS
+    mask = tuple(int(bool(active)) for active in motors_active)
+    if len(mask) != N_MOTORS:
+        raise ValueError(f"motors_active must contain {N_MOTORS} entries")
+    return mask
+
+
+def precompute_polytope(
+    motors_active=None, trim=DEFAULT_TRIM, C=1, s_max=DEFAULT_S_MAX
+):
+    """Precompute all scenario-dependent polytope data for one motor mask."""
+    mask = _normalise_mask(motors_active)
+    A = create_A(mask, C)
+    lower, upper = bounds(mask, s_max)
+    active_columns = A[:, [k for k in range(N_MOTORS) if mask[k]]]
+    rank = int(np.linalg.matrix_rank(active_columns, tol=1e-9))
+    generators = attainable_generators(mask, C, s_max)
+    volume = zonotope_volume(generators)
+    margin = hover_margin(generators, trim) if rank == 3 else 0.0
+
+    return PrecomputedPolytope(
+        mask=mask,
+        allocation_matrix=A,
+        lower=lower,
+        upper=upper,
+        generators=generators,
+        faces=tuple(
+            tuple(map(tuple, face)) for face in attainable_set_faces(mask, C, s_max)
+        ),
+        rank=rank,
+        volume=volume,
+        hover_margin=margin,
+        controllable=rank == 3 and margin > _TOL,
+    )
+
+
+def precompute_polytope_library(trim=DEFAULT_TRIM, C=1, s_max=DEFAULT_S_MAX):
+    """Build the complete 2^N motor-out polytope lookup table offline."""
+    return {
+        mask: precompute_polytope(mask, trim, C, s_max)
+        for mask in itertools.product((0, 1), repeat=N_MOTORS)
+    }
+
+
+def select_precomputed_polytope(library, motors_active=None):
+    """Select the precomputed polytope record for the observed motor-out mask."""
+    mask = _normalise_mask(motors_active)
+    try:
+        return library[mask]
+    except KeyError as exc:
+        raise KeyError(f"no precomputed polytope for motor mask {mask}") from exc
+
+
+def allocate_with_precomputed_polytope(
+    u, polytope, weights=DEFAULT_WEIGHTS, reg=DEFAULT_REG
+):
+    """Allocate using a preselected polytope record instead of rebuilding data."""
+    return bounded_least_squares(
+        polytope.allocation_matrix, u, polytope.lower, polytope.upper, weights, reg
+    )
+
+
 def controllability(motors_active=None, trim=DEFAULT_TRIM, C=1, s_max=DEFAULT_S_MAX):
     """Assess whether the vehicle can be controlled about ``trim``.
 
@@ -223,21 +310,12 @@ def controllability(motors_active=None, trim=DEFAULT_TRIM, C=1, s_max=DEFAULT_S_
     the hover margin. The vehicle is deemed controllable when the command axes
     are full rank and the trim sits strictly inside the attainable set.
     """
-    if motors_active is None:
-        motors_active = (1,) * N_MOTORS
-
-    A = create_A(motors_active, C)
-    active_columns = A[:, [k for k in range(N_MOTORS) if motors_active[k]]]
-    rank = int(np.linalg.matrix_rank(active_columns, tol=1e-9))
-
-    generators = attainable_generators(motors_active, C, s_max)
-    volume = zonotope_volume(generators)
-    margin = hover_margin(generators, trim) if rank == 3 else 0.0
+    polytope = precompute_polytope(motors_active, trim, C, s_max)
 
     return {
-        "n_active": int(sum(motors_active)),
-        "rank": rank,
-        "volume": volume,
-        "margin": margin,
-        "controllable": rank == 3 and margin > _TOL,
+        "n_active": int(sum(polytope.mask)),
+        "rank": polytope.rank,
+        "volume": polytope.volume,
+        "margin": polytope.hover_margin,
+        "controllable": polytope.controllable,
     }

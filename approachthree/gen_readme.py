@@ -40,9 +40,11 @@ from approachthree.model import (  # noqa: E402
     achieved_command,
     allocated_motor_speeds,
     allocated_squared_speeds,
+    allocate_with_precomputed_polytope,
     attainable_generators,
     attainable_set_faces,
     controllability,
+    precompute_polytope_library,
     saturated_motors,
     zonotope_volume,
 )
@@ -581,6 +583,49 @@ readme += code_block("""
 s = allocated_squared_speeds(u, motors_active)   # active-set QP, box-constrained
 w = allocated_motor_speeds(u, motors_active)      # = sqrt(s), always real & feasible
 """)
+
+polytope_library = precompute_polytope_library()
+precomputed_nominal = polytope_library[tuple(mask([]))]
+precomputed_outer = polytope_library[tuple(mask([0]))]
+precomputed_s = allocate_with_precomputed_polytope((0, 70, 100), precomputed_outer)
+online_s = allocated_squared_speeds((0, 70, 100), mask([0]))
+precompute_error = float(np.linalg.norm(precomputed_s - online_s, ord=np.inf))
+
+readme += f"""
+## Hard real-time precompute path
+
+The active-set QP above is intentionally small, but hard real-time software still
+tries to remove avoidable work from the control tick. Approach three therefore
+splits the geometry into an **offline precompute** and a deterministic online
+selection step:
+
+1. At build time or vehicle initialization, enumerate every motor-health bitmask
+   and precompute the allocation matrix, squared-speed bounds, zonotope
+   generators, faces, volume, rank and hover margin. With eight motors this is
+   only `{len(polytope_library)}` records.
+2. During flight, convert the motor-out flags into the same bitmask and perform
+   one table lookup. No hull/facet/volume work is done in the control tick.
+3. Run the QP against the selected record's already-built matrix and bounds.
+   Failed motors have upper bound zero, so the solver cannot command them.
+
+```python
+polytope_library = precompute_polytope_library()      # offline / startup
+polytope = select_precomputed_polytope(
+    polytope_library, motors_active
+)                                                      # hard real-time tick
+s = allocate_with_precomputed_polytope(u, polytope)   # uses prebuilt A/bounds
+```
+
+The proof obligation is that the precomputed record is exactly the data the
+online code would have rebuilt. The tests check that for motor-out cases, and
+the generated numbers here demonstrate the same equality: nominal precompute has
+rank `{precomputed_nominal.rank}`, volume `{precomputed_nominal.volume:,.0f}`,
+and hover margin `{precomputed_nominal.hover_margin:.1f}`; the one-outer-motor
+record has rank `{precomputed_outer.rank}`, volume `{precomputed_outer.volume:,.0f}`,
+and hover margin `{precomputed_outer.hover_margin:.1f}`. Allocating the command
+`(0, 70, 100)` with the selected one-motor-out record matches the online rebuild
+to infinity-norm error `{precompute_error:.1e}`.
+"""
 
 readme += """
 ## Handling motor saturation

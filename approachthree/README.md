@@ -92,6 +92,40 @@ s = allocated_squared_speeds(u, motors_active)   # active-set QP, box-constraine
 w = allocated_motor_speeds(u, motors_active)      # = sqrt(s), always real & feasible
 ```
 
+## Hard real-time precompute path
+
+The active-set QP above is intentionally small, but hard real-time software still
+tries to remove avoidable work from the control tick. Approach three therefore
+splits the geometry into an **offline precompute** and a deterministic online
+selection step:
+
+1. At build time or vehicle initialization, enumerate every motor-health bitmask
+   and precompute the allocation matrix, squared-speed bounds, zonotope
+   generators, faces, volume, rank and hover margin. With eight motors this is
+   only `256` records.
+2. During flight, convert the motor-out flags into the same bitmask and perform
+   one table lookup. No hull/facet/volume work is done in the control tick.
+3. Run the QP against the selected record's already-built matrix and bounds.
+   Failed motors have upper bound zero, so the solver cannot command them.
+
+```python
+polytope_library = precompute_polytope_library()      # offline / startup
+polytope = select_precomputed_polytope(
+    polytope_library, motors_active
+)                                                      # hard real-time tick
+s = allocate_with_precomputed_polytope(u, polytope)   # uses prebuilt A/bounds
+```
+
+The proof obligation is that the precomputed record is exactly the data the
+online code would have rebuilt. The tests check that for motor-out cases, and
+the generated numbers here demonstrate the same equality: nominal precompute has
+rank `3`, volume `2,650,000`,
+and hover margin `60.5`; the one-outer-motor
+record has rank `3`, volume `1,568,750`,
+and hover margin `26.9`. Allocating the command
+`(0, 70, 100)` with the selected one-motor-out record matches the online rebuild
+to infinity-norm error `0.0e+00`.
+
 ## Handling motor saturation
 
 The table below runs a sweep of commands through the allocator. Feasible
@@ -131,9 +165,9 @@ nearest_speed_bound_margin = 11.2500
 The local command-to-output gain matrix is computed from the generated QP `allocate -> sim` loop.
 |  | tau_y | tau_z | T |
 | --- | --- | --- | --- |
-| pitch rate q | 1 | 4.441e-10 | -1.776e-10 |
-| yaw rate r | 8.882e-10 | 1 | -5.329e-10 |
-| airspeed u | 6.217e-10 | 0 | 0.05 |
+| pitch rate q | 1 | 8.882e-11 | -4.441e-10 |
+| yaw rate r | 8.882e-11 | 1 | 8.882e-11 |
+| airspeed u | 7.105e-10 | -8.882e-11 | 0.05 |
 
 | channel | local transfer function |
 | --- | --- |
@@ -146,7 +180,7 @@ The local command-to-output gain matrix is computed from the generated QP `alloc
 
 The state-space model keeps pitch and yaw as integrators and uses a first-order
 airspeed lag with the stack-derived static gain. The closed-loop eigenvalues are
-`(-1.0, -1.0, -1.5)`, so the
+`(-1.5, -1.0, -1.0)`, so the
 local verdict is **stable for the documented diagonal proportional gains**. The local controllability
 rank is `3` and the observability rank is
 `3`.
